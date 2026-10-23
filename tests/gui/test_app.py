@@ -137,6 +137,58 @@ def test_cache_is_pruned_on_start(
     assert limits == [DEFAULT_DISK_LIMIT]
 
 
+def test_missing_photos_are_reported_once(
+    window: MainWindow,
+    qtbot: QtBot,
+    sample_photos: list[Path],
+    tmp_path: Path,
+    errors: list[str],
+) -> None:
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    copies = []
+    for photo in sample_photos[:6]:
+        copies.append(folder / photo.name)
+        copies[-1].write_bytes(photo.read_bytes())
+    window.add_photos([str(p) for p in copies])
+    settle(window, qtbot)
+    project = tmp_path / "moved.collagio"
+    window.document.save(project)
+    for photo in copies[:4]:
+        photo.unlink()
+
+    assert window.open_file(project)
+    settle(window, qtbot)
+    assert len(errors) == 1
+    assert errors[0].startswith("4 photos could not be shown:")
+    assert errors[0].count("\n") == 4
+    for photo in window.document.project.photos:
+        assert not window.canvas.photo_items[photo.id].pixmap().isNull()  # placeholder
+
+    window.document.move_photo(  # a missing photo already reported: no new message
+        "p001", window.document.project.photos[0].rect, 10.0, "Rotate photo"
+    )
+    settle(window, qtbot)
+    assert len(errors) == 1
+
+
+def test_one_missing_photo_shows_its_message(
+    window: MainWindow, qtbot: QtBot, tmp_path: Path, errors: list[str]
+) -> None:
+    photos = [tmp_path / "a.png", tmp_path / "b.png"]
+    for photo in photos:
+        Image.new("RGB", (60, 40), "#336699").save(photo)
+    window.add_photos([str(p) for p in photos])
+    settle(window, qtbot)
+    photos[0].unlink()
+    rect = window.document.project.photos[0].rect
+    assert rect is not None
+    window.document.move_photo("p001", rect, 10.0, "Rotate photo")
+    settle(window, qtbot)
+    assert len(errors) == 1
+    assert "a.png" in errors[0]
+
+
 def test_expand_paths(sample_photos: list[Path], tmp_path: Path) -> None:
     (tmp_path / "notes.txt").write_text("x")
     paths = expand_paths(
