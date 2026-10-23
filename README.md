@@ -2,7 +2,7 @@
 
 Desktop photo collage creator for Windows and Linux.
 
-> **Status:** feature-complete for 0.1 (all six phases of the plan). Not yet released.
+> **Status:** version 0.1.0 – first release. See [CHANGELOG.md](CHANGELOG.md).
 > The desktop GUI follows in Phase 4.
 
 ## Planned features
