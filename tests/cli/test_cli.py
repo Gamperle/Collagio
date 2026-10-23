@@ -24,7 +24,7 @@ def _run(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str, str]
     return code, out, err
 
 
-# --- argument handling --------------------------------------------------------------
+# --- argument handling ---------------------------------------------------------------------------
 
 
 def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
@@ -136,7 +136,7 @@ def test_missing_project_file(capsys: pytest.CaptureFixture[str], tmp_path: Path
     assert "nope.json" in err
 
 
-# --- generating collages ------------------------------------------------------------------
+# --- generating collages -------------------------------------------------------------------------
 
 
 def test_folder_to_png(capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path) -> None:
@@ -233,7 +233,7 @@ def test_module_runs_as_subprocess() -> None:
     assert collagio.__version__ in result.stdout
 
 
-# --- photo order and manual swaps -------------------------------------------------------
+# --- photo order and manual swaps ----------------------------------------------------------------
 
 
 def _layout(project_path: Path) -> dict[str, list[float]]:
@@ -313,7 +313,7 @@ def test_invalid_swaps(
     assert message in err
 
 
-# --- scattered mode and shadows ------------------------------------------------------------
+# --- scattered mode and shadows ------------------------------------------------------------------
 
 
 def _document(
@@ -359,7 +359,7 @@ def test_shadow_defaults_depend_on_mode(
     assert (shadow["opacity"], shadow["blur"]) == (opacity, blur)
 
 
-# --- styles -----------------------------------------------------------------------------------
+# --- styles --------------------------------------------------------------------------------------
 
 
 def test_style_params(capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path) -> None:

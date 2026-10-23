@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from collagio.errors import ImageLoadError
 from collagio.imaging import cache as cache_module
 from collagio.imaging.cache import ThumbnailCache, default_cache_dir
 
@@ -113,3 +114,8 @@ def test_default_cache_dir_windows(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert default_cache_dir() == tmp_path / "Collagio" / "cache"
     monkeypatch.delenv("LOCALAPPDATA")
     assert default_cache_dir() == Path.home() / "AppData" / "Local" / "Collagio" / "cache"
+
+
+def test_missing_photo_raises_image_load_error(tmp_path: Path) -> None:
+    with pytest.raises(ImageLoadError, match="photo not found"):
+        ThumbnailCache().get(tmp_path / "gone.jpg", 64)

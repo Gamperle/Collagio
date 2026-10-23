@@ -41,7 +41,7 @@ def total_photo_area(placements: list[Placement]) -> float:
     return sum(p.rect.area for p in placements)
 
 
-# --- geometry helpers ----------------------------------------------------------------
+# --- geometry helpers ----------------------------------------------------------------------------
 
 
 def test_rotated_corners_without_rotation() -> None:
@@ -80,7 +80,7 @@ def test_visibility_with_full_cover() -> None:
     assert visibility([small, large]) == pytest.approx([0.0, 1.0])
 
 
-# --- properties ----------------------------------------------------------------------------
+# --- properties ----------------------------------------------------------------------------------
 
 
 @settings(deadline=None, max_examples=60)
@@ -151,7 +151,7 @@ def test_different_seeds_give_different_layouts() -> None:
     assert len(layouts) == 5
 
 
-# --- settings --------------------------------------------------------------------------
+# --- settings ------------------------------------------------------------------------------------
 
 
 def test_zero_rotation() -> None:
@@ -218,7 +218,7 @@ def test_huge_photo_is_scaled_to_fit() -> None:
             assert -1e-6 <= y <= 1000 + 1e-6
 
 
-# --- fallback --------------------------------------------------------------------------
+# --- fallback ------------------------------------------------------------------------------------
 
 
 def test_fallback_grid_has_no_overlap(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -241,7 +241,7 @@ def test_unreachable_visibility_falls_back_to_grid() -> None:
     assert min(reference_visibility(placements)) == pytest.approx(1.0)
 
 
-# --- errors ------------------------------------------------------------------------------
+# --- errors --------------------------------------------------------------------------------------
 
 
 def test_empty_input() -> None:

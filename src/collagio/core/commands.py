@@ -8,6 +8,7 @@ remembers what it needs to restore; `revert` undoes exactly that.
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -91,4 +92,116 @@ class SetPhotoStyle:
         if not self._before:
             raise EditError("style change was not applied")
         find_photo(project, self.photo_id).style = self._before[0]
+        self._before = []
+
+
+def _restore(project: Project, snapshot: Project) -> None:
+    """Make `project` equal to `snapshot` in place (views keep their reference)."""
+    for name in vars(snapshot):
+        setattr(project, name, copy.deepcopy(getattr(snapshot, name)))
+
+
+@dataclass
+class EditProject:
+    """Any change made by `mutate`, undone by restoring a snapshot.
+
+    For larger edits (new layout, canvas size, adding photos) where writing a
+    dedicated inverse is not worth it. Redo restores the result of the first
+    `apply`, so `mutate` runs only once.
+    """
+
+    label: str
+    mutate: Callable[[Project], None] = field(repr=False)
+    _before: Project | None = field(default=None, repr=False)
+    _after: Project | None = field(default=None, repr=False)
+
+    def apply(self, project: Project) -> None:
+        self._before = copy.deepcopy(project)
+        if self._after is None:
+            try:
+                self.mutate(project)
+            except Exception:
+                _restore(project, self._before)
+                self._before = None
+                raise
+            self._after = copy.deepcopy(project)
+        else:
+            _restore(project, self._after)
+
+    def revert(self, project: Project) -> None:
+        if self._before is None:
+            raise EditError(f"{self.label!r} was not applied")
+        _restore(project, self._before)
+        self._before = None
+
+
+@dataclass
+class SetPlacement:
+    """Move, resize and/or rotate one photo (the result of one drag)."""
+
+    photo_id: str
+    rect: Rect
+    rotation: float
+    label: str = "Move photo"
+    _before: list[_Placement] = field(default_factory=list, repr=False)
+
+    def apply(self, project: Project) -> None:
+        item = find_photo(project, self.photo_id)
+        self._before = [_placement(item)]
+        item.rect = copy.deepcopy(self.rect)
+        item.rotation = self.rotation
+
+    def revert(self, project: Project) -> None:
+        if not self._before:
+            raise EditError("move was not applied")
+        _set_placement(find_photo(project, self.photo_id), self._before[0])
+        self._before = []
+
+
+@dataclass
+class SetCrop:
+    """Choose the visible part of a photo, or `None` for the automatic crop."""
+
+    photo_id: str
+    crop: CropBox | None
+    label: str = "Crop photo"
+    _before: list[CropBox | None] = field(default_factory=list, repr=False)
+
+    def apply(self, project: Project) -> None:
+        item = find_photo(project, self.photo_id)
+        self._before = [copy.deepcopy(item.crop)]
+        item.crop = copy.deepcopy(self.crop)
+
+    def revert(self, project: Project) -> None:
+        if not self._before:
+            raise EditError("crop was not applied")
+        find_photo(project, self.photo_id).crop = self._before[0]
+        self._before = []
+
+
+@dataclass
+class Restack:
+    """Bring a photo to the front (`to_front`) or send it to the back.
+
+    Stacking orders are renumbered 0..n-1 afterwards.
+    """
+
+    photo_id: str
+    to_front: bool
+    label: str = "Change stacking order"
+    _before: list[int] = field(default_factory=list, repr=False)
+
+    def apply(self, project: Project) -> None:
+        item = find_photo(project, self.photo_id)
+        self._before = [p.z for p in project.photos]
+        others = sorted((p for p in project.photos if p is not item), key=lambda p: p.z)
+        ordered = [*others, item] if self.to_front else [item, *others]
+        for z, photo in enumerate(ordered):
+            photo.z = z
+
+    def revert(self, project: Project) -> None:
+        if not self._before:
+            raise EditError("stacking change was not applied")
+        for photo, z in zip(project.photos, self._before, strict=True):
+            photo.z = z
         self._before = []

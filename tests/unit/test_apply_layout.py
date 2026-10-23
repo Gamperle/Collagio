@@ -133,7 +133,7 @@ def test_switching_mode_resets_rotation() -> None:
     assert [p.z for p in project.photos] == list(range(len(names)))
 
 
-# --- tiles shaped for photo + frame ---------------------------------------------------------
+# --- tiles shaped for photo + frame --------------------------------------------------------------
 
 
 def _project_with(style: StyleRef, mode: LayoutMode = LayoutMode.SCATTERED) -> Project:

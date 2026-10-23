@@ -185,7 +185,7 @@ Order: postage stamp → cut-out → torn → Polaroid → tape/corners → film
   over all styles – new styles are automatically covered).
 - *golden*: one image per style × mode (7 × 2 = 14), plus a mixed per-photo-style collage.
 
-### Phase 4 – GUI editor (M4, ≈3 weeks)
+### Phase 4 – GUI editor (M4, ≈3 weeks) – ✅ done
 1. Main window: photo list (thumbnails), mode/style/canvas panels, preview canvas
 2. `canvas_view.py`: `QGraphicsScene` showing preview-scale renders; selection,
    move, resize/rotate handles, pan/zoom-in-frame (grid mode)

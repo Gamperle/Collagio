@@ -135,7 +135,7 @@ def test_default_loader_reads_files(sample_photos: list[Path]) -> None:
     assert image.getpixel((100, 50)) != WHITE
 
 
-# --- drop shadow ---------------------------------------------------------------------------
+# --- drop shadow ---------------------------------------------------------------------------------
 
 BLACK = (0, 0, 0)
 

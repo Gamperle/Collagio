@@ -8,7 +8,7 @@ from pathlib import Path
 from collagio.core.model import Project
 from collagio.errors import ExportError
 from collagio.imaging.loader import load_image
-from collagio.render.renderer import Loader, render_project
+from collagio.render.renderer import Loader, Progress, render_project
 
 
 class ExportFormat(StrEnum):
@@ -35,12 +35,13 @@ def export_image(
     quality: int = 92,
     scale: float = 1.0,
     loader: Loader = load_image,
+    progress: Progress | None = None,
 ) -> Path:
     """Render and save the collage. The format follows the file suffix."""
     fmt = format_for_path(path)
     if not 1 <= quality <= 100:
         raise ExportError(f"JPEG quality must be 1-100, got {quality}")
-    image = render_project(project, scale=scale, loader=loader)
+    image = render_project(project, scale=scale, loader=loader, progress=progress)
     dpi = project.canvas.dpi * scale
     try:
         if fmt is ExportFormat.PNG:

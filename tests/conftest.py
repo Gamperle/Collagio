@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import os
+
+# Never open real windows in tests; must be set before Qt is imported.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 from collections.abc import Callable
 from pathlib import Path
 

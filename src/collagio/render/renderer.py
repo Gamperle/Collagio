@@ -23,6 +23,11 @@ from collagio.styles import StyleContext, get_style
 from collagio.styles.base import STYLE_UNITS_PER_SHORT_EDGE
 
 Loader = Callable[[str], Image.Image]
+Progress = Callable[[int, int], None]
+
+
+class RenderCancelledError(Exception):
+    """Raised by a progress callback to stop rendering."""
 
 
 def _pixel_box(item: PhotoItem, scale: float) -> tuple[int, int, int, int]:
@@ -71,6 +76,20 @@ def add_shadow(
     return result, (-pad, -pad)
 
 
+def content_aspect(project: Project, item: PhotoItem) -> float:
+    """Aspect ratio of the area the photo's style leaves for the photo itself."""
+    _, _, width, height = _pixel_box(item, 1.0)
+    style_ref = project.style_for(item)
+    style = get_style(style_ref.name)
+    ctx = StyleContext(
+        unit=style_unit(project, 1.0), seed=derive_seed(project.seed, "style", item.id)
+    )
+    _, _, content_w, content_h = style.content_box(
+        (width, height), style.resolve(style_ref.params), ctx
+    )
+    return content_w / content_h
+
+
 def render_item(
     project: Project, item: PhotoItem, scale: float, loader: Loader
 ) -> tuple[Image.Image, tuple[int, int]]:
@@ -102,9 +121,24 @@ def render_item(
     return tile, (left, top)
 
 
+def render_photo(
+    project: Project, item: PhotoItem, scale: float, loader: Loader
+) -> tuple[Image.Image, tuple[int, int]]:
+    """One photo exactly as it appears in the collage (styled, rotated, with shadow)
+    and the canvas position of the image's top-left corner."""
+    tile, (left, top) = render_item(project, item, scale, loader)
+    tile, (shift_x, shift_y) = add_shadow(tile, project.shadow, style_unit(project, scale))
+    return tile, (left + shift_x, top + shift_y)
+
+
 def render_project(
-    project: Project, scale: float = 1.0, loader: Loader = load_image
+    project: Project,
+    scale: float = 1.0,
+    loader: Loader = load_image,
+    progress: Progress | None = None,
 ) -> Image.Image:
+    """The whole collage. `progress(done, total)` is called after each photo; it
+    may raise (e.g. RenderCancelledError) to stop rendering."""
     if scale <= 0:
         raise RenderError(f"scale must be positive, got {scale}")
     size = (
@@ -112,9 +146,12 @@ def render_project(
         max(1, round(project.canvas.height * scale)),
     )
     canvas = render_background(project.canvas.background, size)
-    unit = style_unit(project, scale)
-    for item in sorted(project.photos, key=lambda p: p.z):
-        tile, (left, top) = render_item(project, item, scale, loader)
-        tile, (shift_x, shift_y) = add_shadow(tile, project.shadow, unit)
-        canvas.paste(tile, (left + shift_x, top + shift_y), tile)
+    total = len(project.photos)
+    if progress is not None:
+        progress(0, total)
+    for done, item in enumerate(sorted(project.photos, key=lambda p: p.z), start=1):
+        tile, position = render_photo(project, item, scale, loader)
+        canvas.paste(tile, position, tile)
+        if progress is not None:
+            progress(done, total)
     return canvas

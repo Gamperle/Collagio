@@ -2,8 +2,8 @@
 
 Desktop photo collage creator for Windows and Linux.
 
-> **Status:** early development. Phases 1-3 are done: grid and scattered collages with all
-> seven styles from the command line. The desktop GUI follows in Phase 4.
+> **Status:** early development. Phases 1-4 are done: the desktop editor and the command line
+> work; print/PDF export, German UI and installers follow.
 > The desktop GUI follows in Phase 4.
 
 ## Planned features
@@ -20,6 +20,27 @@ Desktop photo collage creator for Windows and Linux.
 
 See [TASK.md](TASK.md) for the specification and
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the roadmap and test strategy.
+
+## Desktop editor
+
+```bash
+uv sync --extra gui      # or: pip install "collagio[gui]"
+uv run collagio-gui      # optionally followed by photos, folders or a .collagio.json file
+```
+
+- Add photos with **File > Add photos**, the photo list's button, or by dropping files or
+  folders onto the window. The Layout, Style and Canvas tabs change the whole collage;
+  each "Apply" is one undo step.
+- **Click** selects a photo (**Ctrl+click** adds to the selection), **drag** moves it. In grid
+  mode, dropping a photo onto another one **swaps** them.
+- **Corner handles** resize (aspect ratio kept), the **round handle** rotates (**Shift** snaps to
+  15°).
+- **Alt+drag** moves the photo inside its frame, **Ctrl+wheel** zooms it; *Edit > Reset crop*
+  goes back to the automatic crop. The **mouse wheel** zooms the view, the **middle button** pans.
+- Right-click a photo for stacking order, crop reset and removal. Undo/redo covers every edit.
+- **File > Export image** renders the full-resolution PNG/JPEG in the background (cancellable).
+  Unsaved work is autosaved every two minutes; *File > Recover unsaved work* brings it back
+  after a crash.
 
 ## Command-line usage
 

@@ -19,6 +19,7 @@ GATES: dict[str, float] = {
     "render": 90,
     "imaging": 85,
     "cli": 85,
+    "app": 60,
 }
 
 

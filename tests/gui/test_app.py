@@ -1,0 +1,491 @@
+"""Editor tests: real widgets in Qt's offscreen mode, driven by simulated input."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from pathlib import Path
+
+import pytest
+from PIL import Image
+from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
+from PySide6.QtGui import QDropEvent, QWheelEvent
+from PySide6.QtWidgets import QApplication
+from pytestqt.qtbot import QtBot
+
+from collagio.app.main import build_window
+from collagio.app.main_window import MainWindow, expand_paths
+from collagio.app.workers import ExportJob
+from collagio.core.geometry import centre, photo_at
+from collagio.core.model import LayoutMode, LayoutSettings, PhotoItem, Rect, StyleRef
+from collagio.core.serialize import load_project, save_project
+from collagio.layout.scattered import rotated_corners
+from tests.gui.conftest import click, drag, settle, view_point
+
+
+def _photo(window: MainWindow, photo_id: str) -> PhotoItem:
+    return next(p for p in window.document.project.photos if p.id == photo_id)
+
+
+def _rect(window: MainWindow, photo_id: str) -> Rect:
+    rect = _photo(window, photo_id).rect
+    assert rect is not None
+    return rect
+
+
+def _scattered(window: MainWindow, qtbot: QtBot) -> None:
+    window.document.relayout(LayoutSettings(mode=LayoutMode.SCATTERED, max_rotation=0), seed=3)
+    settle(window, qtbot)
+
+
+def _visible_point(window: MainWindow, photo_id: str) -> tuple[float, float]:
+    """A point where `photo_id` is the topmost photo."""
+    rect = _rect(window, photo_id)
+    for fx in (0.5, 0.3, 0.7, 0.2, 0.8):
+        for fy in (0.5, 0.3, 0.7, 0.2, 0.8):
+            point = (rect.x + rect.width * fx, rect.y + rect.height * fy)
+            top = photo_at(window.document.project.photos, point)
+            if top is not None and top.id == photo_id:
+                return point
+    raise AssertionError(f"{photo_id} is hidden")
+
+
+# --- startup and photos --------------------------------------------------------------------------
+
+
+def test_empty_window(window: MainWindow) -> None:
+    assert window.windowTitle() == "Untitled – Collagio"
+    assert not window.export_action.isEnabled()
+    assert not window.undo_action.isEnabled()
+    assert window.photo_list.list.count() == 0
+
+
+def test_add_folder_shows_photos_and_previews(loaded: MainWindow) -> None:
+    assert loaded.photo_list.list.count() == 8
+    assert loaded.windowTitle() == "Untitled* – Collagio"
+    assert len(loaded.canvas.photo_items) == 8
+    assert all(not item.pixmap().isNull() for item in loaded.canvas.photo_items.values())
+    assert loaded.undo_action.text() == "&Undo Add photos"
+    assert loaded.export_action.isEnabled()
+
+
+def test_preview_tiles_sit_on_their_photos(loaded: MainWindow) -> None:
+    for photo in loaded.document.project.photos:
+        item = loaded.canvas.photo_items[photo.id]
+        bounds = item.sceneBoundingRect()
+        rect = photo.rect
+        assert rect is not None
+        assert bounds.center().x() == pytest.approx(rect.x + rect.width / 2, abs=3)
+        assert bounds.center().y() == pytest.approx(rect.y + rect.height / 2, abs=3)
+
+
+def test_list_icons_arrive(loaded: MainWindow, qtbot: QtBot) -> None:
+    settle(loaded, qtbot)
+    item = loaded.photo_list.list.item(0)
+    assert not item.icon().isNull()
+
+
+def test_expand_paths(sample_photos: list[Path], tmp_path: Path) -> None:
+    (tmp_path / "notes.txt").write_text("x")
+    paths = expand_paths(
+        [str(sample_photos[0].parent), str(sample_photos[0]), str(tmp_path / "notes.txt")]
+    )
+    assert len(paths) == 9
+
+
+def test_adding_nothing_usable_reports(
+    window: MainWindow, tmp_path: Path, errors: list[str]
+) -> None:
+    (tmp_path / "notes.txt").write_text("x")
+    window.add_photos([str(tmp_path / "notes.txt")])
+    assert errors == ["No supported photos found."]
+
+
+def test_drop_files_on_canvas(window: MainWindow, sample_photos: list[Path], qtbot: QtBot) -> None:
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(p)) for p in sample_photos[:3]])
+    event = QDropEvent(
+        QPointF(100, 100), Qt.DropAction.CopyAction, mime, Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )  # fmt: skip
+    window.canvas.dropEvent(event)
+    assert len(window.document.project.photos) == 3
+
+
+def test_remove_selected(loaded: MainWindow) -> None:
+    loaded.canvas.select(["p001", "p002"])
+    loaded.remove_action.trigger()
+    assert [p.id for p in loaded.document.project.photos][:2] == ["p003", "p004"]
+    assert loaded.photo_list.list.count() == 6
+    assert loaded.canvas.selected == []
+
+
+# --- selection -----------------------------------------------------------------------------------
+
+
+def test_click_selects_and_syncs_list(loaded: MainWindow) -> None:
+    point = _visible_point(loaded, "p003")
+    click(loaded, *point)
+    assert loaded.canvas.selected == ["p003"]
+    assert loaded.photo_list.selected_ids() == ["p003"]
+    assert loaded.style_panel.target_selected.isChecked()
+    click(loaded, -50, -50)  # outside the canvas
+    assert loaded.canvas.selected == []
+
+
+def test_ctrl_click_toggles(loaded: MainWindow) -> None:
+    click(loaded, *_visible_point(loaded, "p001"))
+    click(loaded, *_visible_point(loaded, "p002"), Qt.KeyboardModifier.ControlModifier)
+    assert sorted(loaded.canvas.selected) == ["p001", "p002"]
+    click(loaded, *_visible_point(loaded, "p001"), Qt.KeyboardModifier.ControlModifier)
+    assert loaded.canvas.selected == ["p002"]
+
+
+def test_list_selection_selects_on_canvas(loaded: MainWindow) -> None:
+    loaded.photo_list.list.item(4).setSelected(True)
+    assert loaded.canvas.selected == ["p005"]
+    assert loaded.remove_action.isEnabled()
+
+
+def test_select_all(loaded: MainWindow) -> None:
+    loaded.select_all_action.trigger()
+    assert len(loaded.canvas.selected) == 8
+
+
+# --- moving, swapping, resizing, rotating --------------------------------------------------------
+
+
+def test_drag_moves_in_scattered_mode_and_undo(loaded: MainWindow, qtbot: QtBot) -> None:
+    _scattered(loaded, qtbot)
+    before = _rect(loaded, "p004")
+    start = _visible_point(loaded, "p004")
+    drag(loaded, start, (start[0] + 150, start[1] + 80))
+    after = _rect(loaded, "p004")
+    assert (after.x - before.x, after.y - before.y) == (
+        pytest.approx(150, abs=6),
+        pytest.approx(80, abs=6),
+    )
+    assert loaded.undo_action.text() == "&Undo Move photo"
+    loaded.undo_action.trigger()
+    assert _rect(loaded, "p004") == before
+
+
+def test_small_click_does_not_move(loaded: MainWindow, qtbot: QtBot) -> None:
+    _scattered(loaded, qtbot)
+    before = _rect(loaded, "p002")
+    start = _visible_point(loaded, "p002")
+    drag(loaded, start, (start[0] + 0.5, start[1]), steps=1)
+    assert _rect(loaded, "p002") == before
+
+
+def test_grid_drag_swaps_photos(loaded: MainWindow) -> None:
+    first, second = _rect(loaded, "p001"), _rect(loaded, "p002")
+    drag(loaded, _visible_point(loaded, "p001"), _visible_point(loaded, "p002"))
+    assert _rect(loaded, "p001") == second
+    assert _rect(loaded, "p002") == first
+    assert loaded.undo_action.text() == "&Undo Swap photos"
+
+
+def test_grid_drag_to_empty_space_snaps_back(loaded: MainWindow) -> None:
+    before = _rect(loaded, "p001")
+    drag(loaded, _visible_point(loaded, "p001"), (-200, -200))
+    assert _rect(loaded, "p001") == before
+    assert loaded.undo_action.text() == "&Undo Add photos"
+
+
+def test_resize_with_corner_handle(loaded: MainWindow, qtbot: QtBot) -> None:
+    _scattered(loaded, qtbot)
+    loaded.canvas.select(["p002"])
+    photo = _photo(loaded, "p002")
+    original = _rect(loaded, "p002")  # the command replaces photo.rect
+    corner = rotated_corners(original, photo.rotation)[2]  # bottom-right
+    drag(loaded, corner, (corner[0] + 120, corner[1] + 120 / original.aspect))
+    resized = _rect(loaded, "p002")
+    assert resized.width == pytest.approx(original.width + 120, abs=8)
+    assert resized.aspect == pytest.approx(original.aspect)
+    assert (resized.x, resized.y) == pytest.approx((original.x, original.y))  # top-left fixed
+    assert loaded.undo_action.text() == "&Undo Resize photo"
+
+
+def test_rotate_with_handle(loaded: MainWindow, qtbot: QtBot) -> None:
+    _scattered(loaded, qtbot)
+    loaded.canvas.select(["p003"])
+    photo = _photo(loaded, "p003")
+    assert photo.rect is not None
+    handle = loaded.canvas._handle_positions(photo)[4]
+    middle = centre(photo.rect)
+    distance = middle[1] - handle[1]
+    drag(loaded, handle, (middle[0] - distance, middle[1]))  # quarter turn to the left
+    assert _photo(loaded, "p003").rotation == pytest.approx(90, abs=3)
+    assert loaded.undo_action.text() == "&Undo Rotate photo"
+
+
+def test_alt_drag_pans_the_crop(loaded: MainWindow) -> None:
+    # p001 is landscape 3:2; find a cell where it gets cropped at the sides.
+    photo = _photo(loaded, "p001")
+    assert photo.crop is None
+    start = _visible_point(loaded, "p001")
+    drag(loaded, start, (start[0] + 40, start[1] + 40), Qt.KeyboardModifier.AltModifier)
+    crop = _photo(loaded, "p001").crop
+    assert crop is not None
+    assert loaded.undo_action.text() == "&Undo Crop photo"
+
+
+def test_ctrl_wheel_zooms_crop_and_reset(loaded: MainWindow) -> None:
+    point = _visible_point(loaded, "p003")
+    position = QPointF(view_point(loaded, *point))
+    event = QWheelEvent(
+        position, QPointF(loaded.canvas.viewport().mapToGlobal(position.toPoint())),
+        QPoint(0, 0), QPoint(0, 120), Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.ControlModifier, Qt.ScrollPhase.NoScrollPhase, False,
+    )  # fmt: skip
+    QApplication.sendEvent(loaded.canvas.viewport(), event)
+    crop = _photo(loaded, "p003").crop
+    assert crop is not None
+    assert max(crop.width, crop.height) < 1.0
+    loaded.canvas.select(["p003"])
+    loaded.reset_crop_action.trigger()
+    assert _photo(loaded, "p003").crop is None
+
+
+def test_wheel_zooms_view_and_fit(loaded: MainWindow) -> None:
+    before = loaded.canvas.transform().m11()
+    loaded.zoom_in_action.trigger()
+    assert loaded.canvas.transform().m11() == pytest.approx(before * 1.25)
+    assert not loaded.canvas.auto_fit
+    loaded.fit_action.trigger()
+    assert loaded.canvas.transform().m11() == pytest.approx(before)
+
+
+def test_restack_actions(loaded: MainWindow) -> None:
+    loaded.canvas.select(["p001"])
+    loaded.front_action.trigger()
+    assert _photo(loaded, "p001").z == 7
+    loaded.back_action.trigger()
+    assert _photo(loaded, "p001").z == 0
+    assert loaded.canvas.photo_items["p001"].zValue() == 0
+
+
+# --- panels --------------------------------------------------------------------------------------
+
+
+def test_layout_panel_rows_follow_mode(loaded: MainWindow) -> None:
+    panel = loaded.layout_panel
+    assert panel._form.isRowVisible(panel.order)
+    assert not panel._form.isRowVisible(panel.overlap)
+    panel.mode.setCurrentIndex(panel.mode.findData(LayoutMode.SCATTERED))
+    assert not panel._form.isRowVisible(panel.order)
+    assert panel._form.isRowVisible(panel.overlap)
+
+
+def test_layout_panel_apply_and_shuffle(loaded: MainWindow) -> None:
+    panel = loaded.layout_panel
+    panel.mode.setCurrentIndex(panel.mode.findData(LayoutMode.SCATTERED))
+    panel.rotation.setValue(20)
+    panel.apply_button.click()
+    layout = loaded.document.project.layout
+    assert (layout.mode, layout.max_rotation) == (LayoutMode.SCATTERED, 20)
+    seed = loaded.document.project.seed
+    panel.shuffle_button.click()
+    assert loaded.document.project.seed != seed or loaded.undo_action.text() == "&Undo New layout"
+
+
+def test_layout_panel_reports_errors(loaded: MainWindow, errors: list[str]) -> None:
+    loaded.layout_panel.margin.setValue(50)
+    loaded.layout_panel.apply_button.click()
+    assert errors
+    assert "margin" in errors[0]
+
+
+def test_style_panel_default_style(loaded: MainWindow) -> None:
+    panel = loaded.style_panel
+    panel.style_combo.setCurrentIndex(panel.style_combo.findData("polaroid"))
+    assert panel.form is not None
+    caption = panel.form.fields["caption"]
+    caption.setText("Hello")  # type: ignore[attr-defined]
+    panel.apply_button.click()
+    assert loaded.document.project.default_style == StyleRef("polaroid", {"caption": "Hello"})
+
+
+def test_style_panel_selected_photos_and_reset(loaded: MainWindow) -> None:
+    loaded.canvas.select(["p002"])
+    panel = loaded.style_panel
+    assert panel.target_selected.isChecked()
+    panel.style_combo.setCurrentIndex(panel.style_combo.findData("stamp"))
+    panel.apply_button.click()
+    assert _photo(loaded, "p002").style == StyleRef("stamp")
+    assert _photo(loaded, "p001").style is None
+    assert not panel.reset_button.isHidden()
+    panel.reset_button.click()
+    assert _photo(loaded, "p002").style is None
+
+
+def test_style_form_values_only_store_changes(loaded: MainWindow) -> None:
+    panel = loaded.style_panel
+    panel.style_combo.setCurrentIndex(panel.style_combo.findData("tape"))
+    assert panel.form is not None
+    assert panel.form.values() == {}
+    panel.form.set_values({"variant": "corners", "tape_opacity": 0.5, "border_color": "#000000"})
+    assert panel.form.values() == {
+        "variant": "corners",
+        "tape_opacity": 0.5,
+        "border_color": "#000000",
+    }
+
+
+def test_shadow_settings(loaded: MainWindow) -> None:
+    panel = loaded.style_panel
+    panel.shadow_opacity.setValue(0.6)
+    panel.shadow_blur.setValue(12)
+    panel.shadow_button.click()
+    shadow = loaded.document.project.shadow
+    assert (shadow.opacity, shadow.blur) == (0.6, 12)
+
+
+def test_canvas_panel_preset(loaded: MainWindow) -> None:
+    panel = loaded.canvas_panel
+    assert panel.preset.currentData() == "A4"
+    panel.preset.setCurrentIndex(panel.preset.findData("fullhd"))
+    assert (panel.width_spin.value(), panel.height_spin.value()) == (1080, 1920)
+    panel.orientation.setCurrentIndex(1)  # landscape
+    assert (panel.width_spin.value(), panel.height_spin.value()) == (1920, 1080)
+    panel.apply_button.click()
+    canvas = loaded.document.project.canvas
+    assert (canvas.width, canvas.height) == (1920, 1080)
+    assert all(p.rect is not None and p.rect.right <= 1920 for p in loaded.document.project.photos)
+
+
+def test_canvas_panel_custom_size_and_gradient(loaded: MainWindow) -> None:
+    panel = loaded.canvas_panel
+    panel.preset.setCurrentIndex(panel.preset.findData("custom"))
+    assert panel.width_spin.isEnabled()
+    panel.width_spin.setValue(1234)
+    panel.height_spin.setValue(999)
+    panel.background_kind.setCurrentIndex(1)
+    assert panel.color2.isEnabled()
+    panel.color.set_color("#112233")
+    panel.apply_button.click()
+    canvas = loaded.document.project.canvas
+    assert (canvas.width, canvas.height, canvas.background.color) == (1234, 999, "#112233")
+    assert canvas.background.kind.value == "gradient"
+    panel.refresh()
+    assert panel.preset.currentData() == "custom"
+
+
+# --- files ---------------------------------------------------------------------------------------
+
+
+def test_save_open_and_recent(
+    make_window: Callable[[], MainWindow], loaded: MainWindow, tmp_path: Path
+) -> None:
+    target = tmp_path / "trip.collagio.json"
+    assert loaded._save_to(target)
+    assert loaded.windowTitle() == "trip.collagio.json – Collagio"
+    assert loaded.recent_files() == [str(target)]
+    assert loaded.recent_menu.actions()[0].text() == "trip.collagio.json"
+
+    other = make_window()
+    assert other.open_file(target)
+    assert other.document.project == loaded.document.project
+    assert not other.document.modified
+
+
+def test_save_uses_existing_path(loaded: MainWindow, tmp_path: Path) -> None:
+    loaded._save_to(tmp_path / "a.collagio.json")
+    loaded.document.relayout(seed=77)
+    assert loaded.save()
+    assert load_project(tmp_path / "a.collagio.json").seed == 77
+
+
+def test_open_broken_file_reports(window: MainWindow, tmp_path: Path, errors: list[str]) -> None:
+    broken = tmp_path / "broken.collagio.json"
+    broken.write_text("{")
+    assert not window.open_file(broken)
+    assert "not valid JSON" in errors[0]
+
+
+def test_new_collage(loaded: MainWindow) -> None:
+    loaded.new_action.trigger()
+    assert loaded.document.project.photos == []
+    assert loaded.photo_list.list.count() == 0
+    assert loaded.canvas.photo_items == {}
+
+
+def test_autosave_and_recover(loaded: MainWindow, errors: list[str]) -> None:
+    loaded.autosave()
+    assert loaded.autosave_path.exists()
+    photos = loaded.document.project
+    loaded.new_action.trigger()
+    assert loaded.recover()
+    assert loaded.document.project == photos
+    assert loaded.document.modified
+
+
+def test_recover_without_autosave(window: MainWindow, errors: list[str]) -> None:
+    assert not window.recover()
+    assert errors == ["There is no unsaved work to recover."]
+
+
+def test_build_window_opens_project_or_photos(
+    make_window: Callable[[], MainWindow], sample_photos: list[Path], tmp_path: Path
+) -> None:
+    window = build_window([str(p) for p in sample_photos[:2]], make_window())
+    assert len(window.document.project.photos) == 2
+    project = tmp_path / "p.collagio.json"
+    save_project(window.document.project, project)
+    reopened = build_window([str(project)], make_window())
+    assert reopened.document.path == project
+
+
+def test_close_with_unsaved_changes_can_be_cancelled(loaded: MainWindow) -> None:
+    loaded.confirm_discard = lambda: False  # type: ignore[method-assign]
+    assert not loaded.close()
+    loaded.confirm_discard = lambda: True  # type: ignore[method-assign]
+    loaded.autosave()
+    assert loaded.close()
+    assert not loaded.autosave_path.exists()
+
+
+# --- export --------------------------------------------------------------------------------------
+
+
+def test_export_in_background(loaded: MainWindow, qtbot: QtBot, tmp_path: Path) -> None:
+    target = tmp_path / "collage.jpg"
+    job = loaded.export(target)
+    assert job is not None
+    with qtbot.waitSignal(job.signals.finished, timeout=20_000) as finished:
+        pass
+    assert finished.args == [str(target)]
+    with Image.open(target) as image:
+        assert image.size == (2480, 3508)
+
+
+def test_export_can_be_cancelled(loaded: MainWindow, qtbot: QtBot, tmp_path: Path) -> None:
+    job = ExportJob(loaded.document.project, tmp_path / "x.png")
+    job.cancel()
+    with qtbot.waitSignal(job.signals.cancelled, timeout=10_000):
+        loaded.export_pool.start(job)
+    assert not (tmp_path / "x.png").exists()
+
+
+def test_export_failure_is_reported(loaded: MainWindow, qtbot: QtBot, tmp_path: Path) -> None:
+    job = loaded.export(tmp_path / "missing" / "x.png")
+    assert job is not None
+    with qtbot.waitSignal(job.signals.failed, timeout=20_000) as failed:
+        pass
+    assert "cannot write" in failed.args[0]
+
+
+def test_export_without_photos(window: MainWindow, tmp_path: Path) -> None:
+    assert window.export(tmp_path / "x.png") is None
+
+
+# --- undo / redo actions -------------------------------------------------------------------------
+
+
+def test_undo_redo_actions(loaded: MainWindow) -> None:
+    loaded.undo_action.trigger()
+    assert loaded.document.project.photos == []
+    assert loaded.redo_action.isEnabled()
+    assert loaded.redo_action.text() == "&Redo Add photos"
+    loaded.redo_action.trigger()
+    assert len(loaded.document.project.photos) == 8

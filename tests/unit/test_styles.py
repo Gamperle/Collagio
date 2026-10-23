@@ -28,7 +28,7 @@ def _render(
     return style.render(content, size, resolved, _ctx(unit, seed))
 
 
-# --- registry -------------------------------------------------------------
+# --- registry ------------------------------------------------------------------------------------
 
 
 def test_plain_is_registered() -> None:
@@ -46,7 +46,7 @@ def test_duplicate_registration_is_rejected() -> None:
         register(PlainStyle)
 
 
-# --- contract every style must fulfil (new styles are covered automatically) ---
+# --- contract every style must fulfil (new styles are covered automatically) ---------------------
 
 
 @pytest.mark.parametrize("name", ALL_STYLES)
@@ -96,7 +96,7 @@ def test_style_handles_large_tiles(name: str) -> None:
     assert _render(name, (6000, 4000), {}, unit=4.0).size == (6000, 4000)
 
 
-# --- parameter validation ----------------------------------------------------
+# --- parameter validation ------------------------------------------------------------------------
 
 
 def test_resolve_fills_defaults() -> None:
@@ -128,7 +128,7 @@ def test_resolve_accepts_colour_formats(color: str) -> None:
     assert get_style("plain").resolve({"border_color": color})["border_color"] == color
 
 
-# --- plain style ------------------------------------------------------------------
+# --- plain style ---------------------------------------------------------------------------------
 
 
 def test_plain_without_border_is_just_the_photo() -> None:

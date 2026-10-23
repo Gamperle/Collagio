@@ -4,7 +4,15 @@ import copy
 
 import pytest
 
-from collagio.core.commands import SetPhotoStyle, SwapPhotos, find_photo
+from collagio.core.commands import (
+    EditProject,
+    Restack,
+    SetCrop,
+    SetPhotoStyle,
+    SetPlacement,
+    SwapPhotos,
+    find_photo,
+)
 from collagio.core.model import Canvas, CropBox, PhotoItem, Project, Rect, StyleRef
 from collagio.errors import EditError
 
@@ -84,7 +92,7 @@ def test_label() -> None:
     assert SwapPhotos("a", "b").label == "Swap photos"
 
 
-# --- SetPhotoStyle --------------------------------------------------------------------------
+# --- SetPhotoStyle -------------------------------------------------------------------------------
 
 
 def test_set_style_and_revert() -> None:
@@ -117,3 +125,87 @@ def test_set_style_errors() -> None:
     with pytest.raises(EditError, match="not applied"):
         SetPhotoStyle("a", None).revert(_project())
     assert SetPhotoStyle("a", None).label == "Change style"
+
+
+# --- EditProject, SetPlacement, SetCrop, Restack -------------------------------------------------
+
+
+def test_edit_project_snapshot() -> None:
+    project = _project()
+    runs: list[int] = []
+
+    def mutate(p: Project) -> None:
+        runs.append(1)
+        p.seed = 99
+        p.photos.pop()
+
+    command = EditProject("Remove photo", mutate)
+    command.apply(project)
+    assert (project.seed, len(project.photos)) == (99, 2)
+    command.revert(project)
+    assert project == _project()
+    command.apply(project)  # redo restores the result without running mutate again
+    assert (project.seed, len(project.photos), len(runs)) == (99, 2, 1)
+
+
+def test_edit_project_keeps_object_identity() -> None:
+    project = _project()
+    photos = project.photos
+    command = EditProject("x", lambda p: setattr(p, "seed", 5))
+    command.apply(project)
+    command.revert(project)
+    assert project.photos is not photos  # contents restored, list replaced ...
+    assert project == _project()  # ... and equal
+
+
+def test_edit_project_failure_leaves_project_unchanged() -> None:
+    project = _project()
+
+    def broken(p: Project) -> None:
+        p.seed = 1
+        raise RuntimeError("boom")
+
+    command = EditProject("Broken", broken)
+    with pytest.raises(RuntimeError, match="boom"):
+        command.apply(project)
+    assert project == _project()
+    with pytest.raises(EditError, match="was not applied"):
+        command.revert(project)
+
+
+def test_set_placement() -> None:
+    project = _project()
+    command = SetPlacement("a", Rect(1, 2, 3, 4), 30.0)
+    command.apply(project)
+    assert (project.photos[0].rect, project.photos[0].rotation) == (Rect(1, 2, 3, 4), 30.0)
+    assert project.photos[0].crop == CropBox(0.1, 0, 0.8, 1)  # crop is kept
+    command.revert(project)
+    assert project == _project()
+    with pytest.raises(EditError, match="not applied"):
+        command.revert(project)
+
+
+def test_set_crop() -> None:
+    project = _project()
+    command = SetCrop("b", CropBox(0.2, 0.2, 0.5, 0.5))
+    command.apply(project)
+    assert project.photos[1].crop == CropBox(0.2, 0.2, 0.5, 0.5)
+    command.revert(project)
+    assert project == _project()
+    with pytest.raises(EditError, match="not applied"):
+        command.revert(project)
+
+
+@pytest.mark.parametrize(
+    ("photo_id", "to_front", "expected"),
+    [("a", True, [2, 1, 0]), ("b", False, [1, 0, 2]), ("b", True, [0, 2, 1])],
+)
+def test_restack(photo_id: str, to_front: bool, expected: list[int]) -> None:
+    project = _project()  # z: a=0, b=2, c=1
+    command = Restack(photo_id, to_front)
+    command.apply(project)
+    assert [p.z for p in project.photos] == expected
+    command.revert(project)
+    assert project == _project()
+    with pytest.raises(EditError, match="not applied"):
+        command.revert(project)

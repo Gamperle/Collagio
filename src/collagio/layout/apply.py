@@ -70,8 +70,11 @@ def apply_layout(project: Project, size_of: SizeOf = oriented_size) -> None:
     """Place every photo according to the project's layout settings and seed.
 
     Manual changes (position, rotation, crop) are replaced; styles are kept.
+    A single photo is allowed here (an editor may hold one while photos are being
+    added); finished collages need MIN_PHOTOS, see `build_project`.
     """
-    check_photo_count(len(project.photos))
+    if not 1 <= len(project.photos) <= MAX_PHOTOS:
+        check_photo_count(len(project.photos))
     settings = project.layout
     short_edge = project.canvas.short_edge
     # Tiles get the shape of photo plus frame, so styles with wide borders (e.g. a

@@ -9,11 +9,13 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+import threading
 from collections import OrderedDict
 from pathlib import Path
 
 from PIL import Image
 
+from collagio.errors import ImageLoadError
 from collagio.imaging.loader import load_image
 
 
@@ -27,6 +29,8 @@ def default_cache_dir() -> Path:
 
 
 class ThumbnailCache:
+    """Safe to share between threads; photos are decoded outside the lock."""
+
     def __init__(self, directory: Path | None = None, memory_items: int = 256) -> None:
         if memory_items < 1:
             raise ValueError("memory_items must be at least 1")
@@ -36,11 +40,15 @@ class ThumbnailCache:
         self.memory_hits = 0
         self.disk_hits = 0
         self.misses = 0
+        self._lock = threading.Lock()
 
     @staticmethod
     def key(path: str | Path, max_edge: int) -> str:
         resolved = Path(path).resolve()
-        stat = resolved.stat()
+        try:
+            stat = resolved.stat()
+        except OSError as exc:
+            raise ImageLoadError(f"photo not found: {path}") from exc
         material = f"{resolved}|{stat.st_mtime_ns}|{stat.st_size}|{max_edge}"
         return hashlib.sha256(material.encode()).hexdigest()
 
@@ -58,10 +66,11 @@ class ThumbnailCache:
     def get(self, path: str | Path, max_edge: int) -> Image.Image:
         """Upright photo with its longer side at most `max_edge`. Returns a copy."""
         key = self.key(path, max_edge)
-        if key in self._memory:
-            self.memory_hits += 1
-            self._memory.move_to_end(key)
-            return self._memory[key].copy()
+        with self._lock:
+            if key in self._memory:
+                self.memory_hits += 1
+                self._memory.move_to_end(key)
+                return self._memory[key].copy()
 
         disk_path = self._disk_path(key)
         if disk_path is not None and disk_path.exists():
@@ -71,19 +80,23 @@ class ThumbnailCache:
             except OSError:  # corrupt cache file: fall through and regenerate
                 disk_path.unlink(missing_ok=True)
             else:
-                self.disk_hits += 1
-                self._remember(key, image)
+                with self._lock:
+                    self.disk_hits += 1
+                    self._remember(key, image)
                 return image.copy()
 
-        self.misses += 1
         image = load_image(path, max_edge=max_edge)
         if disk_path is not None:
             disk_path.parent.mkdir(parents=True, exist_ok=True)
-            temp = disk_path.with_suffix(".tmp")
+            # Unique per thread, so concurrent loads of one photo do not clash.
+            temp = disk_path.with_suffix(f".{os.getpid()}-{threading.get_ident()}.tmp")
             image.save(temp, format="PNG")
             os.replace(temp, disk_path)
-        self._remember(key, image)
+        with self._lock:
+            self.misses += 1
+            self._remember(key, image)
         return image.copy()
 
     def clear_memory(self) -> None:
-        self._memory.clear()
+        with self._lock:
+            self._memory.clear()
