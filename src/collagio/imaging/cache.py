@@ -55,7 +55,7 @@ class ThumbnailCache:
         try:
             stat = resolved.stat()
         except OSError as exc:
-            raise ImageLoadError(f"photo not found: {path}") from exc
+            raise ImageLoadError("photo not found: {path}", path=path) from exc
         material = f"{resolved}|{stat.st_mtime_ns}|{stat.st_size}|{max_edge}"
         return hashlib.sha256(material.encode()).hexdigest()
 

@@ -159,10 +159,12 @@ def project_to_dict(project: Project, base_dir: Path | None = None) -> dict[str,
 def _migrate(data: dict[str, Any]) -> dict[str, Any]:
     version = data.get("schema_version")
     if not isinstance(version, int) or version < 1:
-        raise ProjectFormatError(f"invalid schema_version {version!r}")
+        raise ProjectFormatError("invalid schema_version {version!r}", version=version)
     if version > SCHEMA_VERSION:
         raise ProjectFormatError(
-            f"project was saved by a newer Collagio (schema {version}, supported {SCHEMA_VERSION})"
+            "project was saved by a newer Collagio (schema {version}, supported {supported})",
+            version=version,
+            supported=SCHEMA_VERSION,
         )
     while version < SCHEMA_VERSION:
         data = MIGRATIONS[version](data)
@@ -266,7 +268,7 @@ def project_from_dict(data: Any, base_dir: Path | None = None) -> Project:
             layout_edited=bool(data.get("layout_edited", True)),
         )
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        raise ProjectFormatError(f"invalid project file: {exc!r}") from exc
+        raise ProjectFormatError("invalid project file: {error!r}", error=exc) from exc
 
 
 def save_project(project: Project, path: Path) -> None:
@@ -278,5 +280,5 @@ def load_project(path: Path) -> Project:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ProjectFormatError(f"{path}: not valid JSON ({exc})") from exc
+        raise ProjectFormatError("{path}: not valid JSON ({error})", path=path, error=exc) from exc
     return project_from_dict(data, base_dir=path.resolve().parent)

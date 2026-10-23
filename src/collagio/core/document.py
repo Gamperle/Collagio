@@ -260,7 +260,11 @@ class Document:
             return
         total = len(self.project.photos) + len(paths)
         if total > MAX_PHOTOS:
-            raise EditError(f"a collage can have at most {MAX_PHOTOS} photos ({total} requested)")
+            raise EditError(
+                "a collage can have at most {maximum} photos ({total} requested)",
+                maximum=MAX_PHOTOS,
+                total=total,
+            )
         for path in paths:
             self.size_of(str(path))  # fail before changing anything if a photo is unreadable
 
@@ -280,7 +284,7 @@ class Document:
         ids = set(photo_ids)
         known = {p.id for p in self.project.photos}
         if not ids <= known:
-            raise EditError(f"no photo with id {sorted(ids - known)[0]!r}")
+            raise EditError("no photo with id {photo_id!r}", photo_id=sorted(ids - known)[0])
         if not ids:
             return
         self._edit(
@@ -321,7 +325,7 @@ class Document:
         for index, text in enumerate(self.project.texts):
             if text.id == text_id:
                 return index
-        raise EditError(f"no text with id {text_id!r}")
+        raise EditError("no text with id {text_id!r}", text_id=text_id)
 
     @staticmethod
     def _check_text(item: TextItem) -> None:
@@ -338,7 +342,7 @@ class Document:
         item = TextItem(f"t{number:03d}", text, canvas.width / 2, canvas.height / 2)
         for name, value in fields.items():
             if not hasattr(item, name):
-                raise EditError(f"unknown text field {name!r}")
+                raise EditError("unknown text field {name!r}", name=name)
             setattr(item, name, value)
         self._check_text(item)
         self._edit("Add text", lambda p: p.texts.append(copy.deepcopy(item)), relayout=False)

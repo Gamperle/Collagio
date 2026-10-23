@@ -34,7 +34,7 @@ def parse_color(value: str) -> tuple[int, int, int]:
     try:
         rgb = ImageColor.getrgb(value)
     except ValueError as exc:
-        raise RenderError(f"invalid colour {value!r}") from exc
+        raise RenderError("invalid colour {value!r}", value=value) from exc
     return rgb[0], rgb[1], rgb[2]
 
 
@@ -76,7 +76,11 @@ def _texture(
         streaks = _noise(size, (120, 1.5), unit, rng)  # long, thin pores along the grain
         brightness = 16.0 * grain + 7.0 * streaks + 8.0 * _noise(size, (200, 40), unit, rng)
     else:
-        raise RenderError(f"unknown texture {name!r}; available: {', '.join(TEXTURES)}")
+        raise RenderError(
+            "unknown texture {name!r}; available: {available}",
+            name=name,
+            available=", ".join(TEXTURES),
+        )
     return _shade(base, brightness.astype(np.float32))
 
 
@@ -88,7 +92,7 @@ def _photo(
     if loader is None:
         raise RenderError("photo backgrounds need a photo loader")
     if not 0.0 <= background.dim <= 1.0:
-        raise RenderError(f"background dim must be between 0 and 1, got {background.dim}")
+        raise RenderError("background dim must be between 0 and 1, got {dim}", dim=background.dim)
     source = loader(background.photo).convert("RGB")
     radius = max(0.0, background.blur * unit)
     # Blur at reduced size (much faster for large radii), then scale up.

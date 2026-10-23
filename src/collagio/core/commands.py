@@ -51,7 +51,7 @@ def find_photo(project: Project, photo_id: str) -> PhotoItem:
     for item in project.photos:
         if item.id == photo_id:
             return item
-    raise EditError(f"no photo with id {photo_id!r}")
+    raise EditError("no photo with id {photo_id!r}", photo_id=photo_id)
 
 
 _Placement = tuple[Rect | None, float, CropBox | None, int]
@@ -80,7 +80,7 @@ class SwapPhotos(_ManualEdit):
 
     def apply(self, project: Project) -> None:
         if self.first_id == self.second_id:
-            raise EditError(f"cannot swap photo {self.first_id!r} with itself")
+            raise EditError("cannot swap photo {photo_id!r} with itself", photo_id=self.first_id)
         first = find_photo(project, self.first_id)
         second = find_photo(project, self.second_id)
         self._before = [_placement(first), _placement(second)]
@@ -155,7 +155,7 @@ class EditProject:
 
     def revert(self, project: Project) -> None:
         if self._before is None:
-            raise EditError(f"{self.label!r} was not applied")
+            raise EditError("{label!r} was not applied", label=self.label)
         _restore(project, self._before)
         self._before = None
 

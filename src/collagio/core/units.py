@@ -72,14 +72,16 @@ def parse_size(spec: str, dpi: float, orientation: Orientation | None = None) ->
     "WIDTHxHEIGHT" in pixels (optionally suffixed "px") or "WIDTHxHEIGHTmm".
     """
     if dpi <= 0:
-        raise SizeError(f"DPI must be positive, got {dpi}")
+        raise SizeError("DPI must be positive, got {dpi}", dpi=dpi)
     size = _lookup_preset(spec, dpi)
     if size is None:
         match = _SIZE_RE.match(spec)
         if match is None:
             presets = ", ".join([*PAPER_SIZES_MM, *PIXEL_PRESETS])
             raise SizeError(
-                f"invalid size {spec!r}; use WIDTHxHEIGHT, WIDTHxHEIGHTmm or one of: {presets}"
+                "invalid size {spec!r}; use WIDTHxHEIGHT, WIDTHxHEIGHTmm or one of: {presets}",
+                spec=spec,
+                presets=presets,
             )
         width, height = float(match[1]), float(match[2])
         if (match[3] or "px").lower() == "mm":
@@ -88,5 +90,10 @@ def parse_size(spec: str, dpi: float, orientation: Orientation | None = None) ->
             size = round(width), round(height)
     width, height = orient(size, orientation)
     if not (0 < width <= MAX_CANVAS_PX and 0 < height <= MAX_CANVAS_PX):
-        raise SizeError(f"canvas size {width}x{height} px is outside 1..{MAX_CANVAS_PX} px")
+        raise SizeError(
+            "canvas size {width}x{height} px is outside 1..{maximum} px",
+            width=width,
+            height=height,
+            maximum=MAX_CANVAS_PX,
+        )
     return width, height

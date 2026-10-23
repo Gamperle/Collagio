@@ -162,7 +162,10 @@ def grid_layout(
             best, best_score = rects, score
     if best is None:
         raise LayoutError(
-            f"cannot fit {len(aspects)} photos with a {settings.gap:g} px gap "
-            f"into {width:g}x{height:g} px"
+            "cannot fit {count} photos with a {gap:g} px gap into {width:g}x{height:g} px",
+            count=len(aspects),
+            gap=settings.gap,
+            width=width,
+            height=height,
         )
     return best

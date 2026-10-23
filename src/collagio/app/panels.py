@@ -47,6 +47,7 @@ from PySide6.QtWidgets import (
 
 from collagio.app.strings import (
     choice_label,
+    error_message,
     font_filter,
     image_filter,
     parameter_label,
@@ -424,7 +425,7 @@ class LayoutPanel(QWidget):
         try:
             self.document.relayout(self.settings(), self.seed.value())
         except CollagioError as exc:
-            self.error.emit(str(exc))
+            self.error.emit(error_message(exc))
             return False
         return True
 
@@ -564,7 +565,7 @@ class StylePanel(QWidget):
             else:
                 self.document.set_default_style(style)
         except CollagioError as exc:
-            self.error.emit(str(exc))
+            self.error.emit(error_message(exc))
 
     def reset_selected(self) -> None:
         if self.selected:
@@ -774,7 +775,7 @@ class CanvasPanel(QWidget):
         try:
             self.document.set_canvas(self.canvas())
         except CollagioError as exc:
-            self.error.emit(str(exc))
+            self.error.emit(error_message(exc))
 
 
 # --- texts -------------------------------------------------------------------------------------
@@ -889,7 +890,7 @@ class TextPanel(QWidget):
         try:
             text_id = self.document.add_text(self.tr("Text"))
         except CollagioError as exc:
-            self.error.emit(str(exc))
+            self.error.emit(error_message(exc))
             return
         self.select(text_id)
         self.text_selected.emit(text_id)
@@ -917,7 +918,7 @@ class TextPanel(QWidget):
         try:
             self.document.update_text(updated)
         except CollagioError as exc:
-            self.error.emit(str(exc))
+            self.error.emit(error_message(exc))
 
     def choose_font(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

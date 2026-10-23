@@ -31,7 +31,12 @@ _FRAME_ITERATIONS = 6
 
 def check_photo_count(count: int) -> None:
     if not MIN_PHOTOS <= count <= MAX_PHOTOS:
-        raise LayoutError(f"a collage needs {MIN_PHOTOS} to {MAX_PHOTOS} photos, got {count}")
+        raise LayoutError(
+            "a collage needs {minimum} to {maximum} photos, got {count}",
+            minimum=MIN_PHOTOS,
+            maximum=MAX_PHOTOS,
+            count=count,
+        )
 
 
 def framed_aspect(
@@ -129,7 +134,7 @@ def apply_layout(project: Project, size_of: SizeOf = oriented_size) -> None:
             tile_aspect,
         )
     else:  # pragma: no cover - guarded by the LayoutMode enum
-        raise LayoutError(f"unsupported layout mode {settings.mode}")
+        raise LayoutError("unsupported layout mode {mode}", mode=settings.mode)
 
     for item, placement in zip(project.photos, placements, strict=True):
         item.rect = placement.rect

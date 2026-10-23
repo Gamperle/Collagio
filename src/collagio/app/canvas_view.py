@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
 
 from collagio.app.preview import PreviewRenderer, TileResult, preview_scale, render_key
 from collagio.app.qt_image import to_qimage
+from collagio.app.strings import error_message
 from collagio.core.document import Document
 from collagio.core.geometry import (
     Point,
@@ -276,7 +277,7 @@ class CanvasView(QGraphicsView):
                 try:
                     tile, (left, top) = text_tile(project, text, scale)
                 except CollagioError as exc:
-                    self.error.emit(str(exc))
+                    self.error.emit(error_message(exc))
                     continue
                 item.setPixmap(QPixmap.fromImage(to_qimage(tile)))
                 item.setScale(1 / scale)
@@ -566,7 +567,7 @@ class CanvasView(QGraphicsView):
             elif drag.gesture is Gesture.PAN_VIEW:
                 return
         except CollagioError as exc:
-            self.error.emit(str(exc))
+            self.error.emit(error_message(exc))
         self.sync()  # snaps back anything that was not committed
 
     # --- crop ------------------------------------------------------------------------------------
@@ -621,7 +622,7 @@ class CanvasView(QGraphicsView):
                         photo.id, zoom_crop(crop, CROP_ZOOM_STEP**steps, anchor), merge
                     )
                 except CollagioError as exc:
-                    self.error.emit(str(exc))
+                    self.error.emit(error_message(exc))
                 self.sync()
             return
         self.zoom(ZOOM_STEP**steps)

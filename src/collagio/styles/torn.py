@@ -22,7 +22,11 @@ def parse_sides(value: str) -> frozenset[str]:
         return frozenset(SIDES)
     sides = frozenset(part.strip() for part in value.split(",") if part.strip())
     if not sides or not sides <= set(SIDES):
-        raise StyleError(f"torn.sides must be 'all' or a list of {', '.join(SIDES)}, got {value!r}")
+        raise StyleError(
+            "torn.sides must be 'all' or a list of {sides}, got {value!r}",
+            sides=", ".join(SIDES),
+            value=value,
+        )
     return sides
 
 
