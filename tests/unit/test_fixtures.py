@@ -34,8 +34,11 @@ def test_exif_rotated_photo_displays_as_portrait(sample_photos: list[Path]) -> N
     with Image.open(path) as image:
         assert image.getexif()[EXIF_ORIENTATION_TAG] == 6
         assert image.width > image.height
-        upright = ImageOps.exif_transpose(image)
+        upright = ImageOps.exif_transpose(image).convert("RGB")
         assert upright.height > upright.width
+        # The orientation marker ends up top-left only if the tag is honoured.
+        assert upright.getpixel((2, 2)) == pytest.approx((0, 0, 0), abs=20)
+        assert upright.getpixel((upright.width - 3, 2)) != pytest.approx((0, 0, 0), abs=20)
 
 
 def test_alpha_photo_has_transparent_corners(sample_photos: list[Path]) -> None:

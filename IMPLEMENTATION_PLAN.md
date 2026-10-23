@@ -112,7 +112,7 @@ PySide6 is added (Phase 4).
 
 **Tests:** smoke test that the package imports; image-compare helper tested itself.
 
-### Phase 1 – Core model, import, grid layout, export, CLI (M1, ≈2 weeks)
+### Phase 1 – Core model, import, grid layout, export, CLI (M1, ≈2 weeks) – ✅ done
 1. `core/model.py`, `core/units.py`, `core/rng.py`
 2. `core/serialize.py` with `schema_version: 1`
 3. `imaging/loader.py` (EXIF orientation, JPEG/PNG/WebP/TIFF), `imaging/cache.py`

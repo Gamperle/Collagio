@@ -73,9 +73,18 @@ def render_photo(spec: PhotoSpec, index: int) -> Image.Image:
 
 def write_photo(spec: PhotoSpec, index: int, directory: Path) -> Path:
     path = directory / spec.name
-    image = render_photo(spec, index)
     save_kwargs: dict[str, object] = {}
-    if spec.exif_orientation is not None:
+    if spec.exif_orientation is None:
+        image = render_photo(spec, index)
+    else:
+        if spec.exif_orientation != 6:
+            raise NotImplementedError("only EXIF orientation 6 is generated")
+        # Orientation 6 = "rotate 90° clockwise to display". Draw the photo
+        # upright at its display size and store it rotated counter-clockwise,
+        # like a camera held sideways, so a correct loader shows it upright.
+        width, height = spec.size
+        upright = render_photo(PhotoSpec(spec.name, (height, width), spec.fmt), index)
+        image = upright.transpose(Image.Transpose.ROTATE_90)
         exif = Image.Exif()
         exif[EXIF_ORIENTATION_TAG] = spec.exif_orientation
         save_kwargs["exif"] = exif

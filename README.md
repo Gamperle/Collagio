@@ -2,7 +2,8 @@
 
 Desktop photo collage creator for Windows and Linux.
 
-> **Status:** early development (Phase 0 – project setup). Nothing usable yet.
+> **Status:** early development. Phase 1 is done: grid collages from the command line.
+> The desktop GUI follows in Phase 4.
 
 ## Planned features
 
@@ -18,6 +19,24 @@ Desktop photo collage creator for Windows and Linux.
 
 See [TASK.md](TASK.md) for the specification and
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the roadmap and test strategy.
+
+## Command-line usage
+
+```bash
+collagio -i ./photos -o collage.png --size A4 --dpi 300 --seed 42
+collagio -i a.jpg b.jpg c.jpg -o out.jpg --size fullhd --border 8 --corner-radius 12 \
+         --background "#f4f1ea" --save-project my.collagio.json
+collagio --project my.collagio.json -o out.png      # re-render a saved project
+collagio --help                                     # all options
+```
+
+- **Sizes:** paper presets (`A5`, `A4`, `A3`, `10x15`, `13x18`, `20x30`), pixel presets
+  (`fullhd`, `4k`, `instagram-square`, `instagram-portrait`), `1920x1080` or `210x297mm`;
+  `--orientation portrait|landscape`
+- **Layout:** `--gap` and `--margin` as a fraction of the canvas short edge,
+  `--size-variation 0..1`, `--seed` for a reproducible layout (a random seed is printed)
+- **Style:** `--border`, `--corner-radius` in 1/1000 of the canvas short edge, `--border-color`
+- **Background:** one colour, or two comma-separated colours for a gradient
 
 ## Development
 
