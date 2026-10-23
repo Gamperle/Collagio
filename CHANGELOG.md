@@ -6,6 +6,7 @@
 - Fixed: a continuous Ctrl+wheel zoom of a crop is now one undo step instead of one per notch (#9)
 - Fixed: photo list icons are refreshed when a photo is changed on disk (#5)
 - Fixed: the thumbnail disk cache is kept under 500 MB (least recently used previews are removed at start-up); *View > Clear thumbnail cache* empties it (#6)
+- Fixed: opening a project with many missing photos shows one summary message instead of one per photo; missing photos are shown as placeholders (#4)
 
 ## 0.1.0 – 2026-10-23
 

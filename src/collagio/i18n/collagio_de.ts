@@ -94,6 +94,10 @@
 <context>
     <name>CanvasView</name>
     <message>
+        <source>{} photos could not be shown:</source>
+        <translation>{} Fotos konnten nicht angezeigt werden:</translation>
+    </message>
+    <message>
         <source>Bring to front</source>
         <translation>In den Vordergrund</translation>
     </message>

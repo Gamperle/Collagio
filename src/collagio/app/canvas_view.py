@@ -36,6 +36,7 @@ from PySide6.QtGui import (
     QPixmap,
     QPolygonF,
     QResizeEvent,
+    QTransform,
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
@@ -43,6 +44,7 @@ from PySide6.QtWidgets import (
     QGraphicsScene,
     QGraphicsView,
     QMenu,
+    QStyle,
     QWidget,
 )
 
@@ -75,6 +77,7 @@ ROTATE_HANDLE_PX = 28  # distance of the rotation handle above the top edge, on 
 DRAG_THRESHOLD_PX = 4
 ZOOM_STEP = 1.15
 CROP_ZOOM_STEP = 1.1
+MAX_LISTED_ERRORS = 5  # in the message about photos that cannot be shown
 CROP_ZOOM_MERGE_SECONDS = 0.5  # wheel steps closer together are one undo step
 
 
@@ -179,7 +182,10 @@ class CanvasView(QGraphicsView):
         self.scene().addItem(self._background)
         self._background_key: tuple[object, ...] | None = None
         self._background_request = 0
-        self._tile_requests: dict[str, int] = {}
+        self._tile_requests: dict[str, int] = {}  # latest request per photo
+        self._pending_tiles: set[str] = set()  # photos whose latest tile has not arrived
+        self._tile_errors: dict[str, str] = {}  # photo id -> error shown for it
+        self._new_tile_errors: list[str] = []  # reported once the pending tiles are in
         self._drag = _Drag()
         self._last_crop_zoom: tuple[str, float] | None = None  # photo id, time
 
@@ -193,6 +199,10 @@ class CanvasView(QGraphicsView):
         for item in self.photo_items.values():
             self.scene().removeItem(item)
         self.photo_items.clear()
+        self._tile_requests.clear()
+        self._pending_tiles.clear()
+        self._tile_errors.clear()
+        self._new_tile_errors.clear()
         self.selected = []
         self._background_key = None
         self.auto_fit = True
@@ -215,6 +225,8 @@ class CanvasView(QGraphicsView):
             if photo_id not in current:
                 self.scene().removeItem(self.photo_items.pop(photo_id))
                 self._tile_requests.pop(photo_id, None)
+                self._pending_tiles.discard(photo_id)
+                self._tile_errors.pop(photo_id, None)
         for photo in project.photos:
             item = self.photo_items.get(photo.id)
             if item is None:
@@ -227,6 +239,7 @@ class CanvasView(QGraphicsView):
                 item.key = key
                 request = self.renderer.next_request()
                 self._tile_requests[photo.id] = request
+                self._pending_tiles.add(photo.id)
                 self.renderer.render_tile(project, photo.id, request)
             if photo.rect is not None:
                 item.reset_live()
@@ -274,15 +287,59 @@ class CanvasView(QGraphicsView):
     def _on_tile(self, result: TileResult) -> None:
         if self._tile_requests.get(result.photo_id) != result.request:
             return  # stale
+        self._pending_tiles.discard(result.photo_id)
         item = self.photo_items.get(result.photo_id)
         photo = self._photo(result.photo_id)
-        if item is None or photo is None or photo.rect is None:
+        if item is not None and photo is not None and photo.rect is not None:
+            scale = preview_scale(self.document.project)
+            if result.error is None:
+                self._tile_errors.pop(photo.id, None)
+                item.set_tile(result.image, result.offset, scale)
+            else:
+                if self._tile_errors.get(photo.id) != result.error:
+                    self._tile_errors[photo.id] = result.error
+                    self._new_tile_errors.append(result.error)
+                image, offset = self._placeholder(photo.rect, photo.rotation, scale)
+                item.set_tile(image, offset, scale)
+            item.place(photo.rect)
+        if not self._pending_tiles and self._new_tile_errors:
+            self._report_tile_errors()
+
+    def _report_tile_errors(self) -> None:
+        """One message for all photos that failed since the last report."""
+        errors, self._new_tile_errors = self._new_tile_errors, []
+        if len(errors) == 1:
+            self.error.emit(errors[0])
             return
-        if result.error is not None:
-            self.error.emit(result.error)
-            return
-        item.set_tile(result.image, result.offset, preview_scale(self.document.project))
-        item.place(photo.rect)
+        shown = errors[:MAX_LISTED_ERRORS]
+        if len(errors) > len(shown):
+            shown.append("…")
+        heading = self.tr("{} photos could not be shown:").format(len(errors))
+        self.error.emit("\n".join([heading, *shown]))
+
+    def _placeholder(
+        self, rect: Rect, rotation: float, scale: float
+    ) -> tuple[QImage, tuple[float, float]]:
+        """Grey tile with a warning sign for a photo that cannot be shown."""
+        width, height = max(1, round(rect.width * scale)), max(1, round(rect.height * scale))
+        image = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(QColor("#9a9a9a"))
+        icon_size = max(1, min(width, height) // 3)
+        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+        painter = QPainter(image)
+        painter.drawPixmap(
+            (width - icon_size) // 2, (height - icon_size) // 2, icon.pixmap(icon_size)
+        )
+        painter.end()
+        if rotation:
+            image = image.transformed(
+                QTransform().rotate(-rotation), Qt.TransformationMode.SmoothTransformation
+            )
+        offset = (
+            (rect.width - image.width() / scale) / 2,
+            (rect.height - image.height() / scale) / 2,
+        )
+        return image, offset
 
     def _on_background(self, request: int, image: QImage) -> None:
         if request != self._background_request:
