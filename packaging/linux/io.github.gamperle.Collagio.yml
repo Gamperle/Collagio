@@ -19,8 +19,8 @@ modules:
   - name: collagio
     buildsystem: simple
     build-commands:
+      - mkdir -p /app/lib /app/bin
       - cp -a Collagio /app/lib/collagio
-      - mkdir -p /app/bin
       - ln -s ../lib/collagio/collagio-gui /app/bin/collagio-gui
       - ln -s ../lib/collagio/collagio /app/bin/collagio
       - install -Dm644 io.github.gamperle.Collagio.desktop -t /app/share/applications
