@@ -20,7 +20,7 @@
     </message>
     <message>
         <source>Gradient</source>
-        <translation>Verlauf</translation>
+        <translation>Farbverlauf</translation>
     </message>
     <message>
         <source>Texture</source>
@@ -84,7 +84,7 @@
     </message>
     <message>
         <source>Gradient angle</source>
-        <translation>Verlaufswinkel</translation>
+        <translation>Winkel des Farbverlaufs</translation>
     </message>
     <message>
         <source>Background photo</source>
