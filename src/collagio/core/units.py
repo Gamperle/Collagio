@@ -12,6 +12,7 @@ MAX_CANVAS_PX = 30_000
 
 # Portrait orientation (width <= height).
 PAPER_SIZES_MM: dict[str, tuple[float, float]] = {
+    "A6": (105.0, 148.0),
     "A5": (148.0, 210.0),
     "A4": (210.0, 297.0),
     "A3": (297.0, 420.0),

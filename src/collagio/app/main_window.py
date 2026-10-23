@@ -3,23 +3,30 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QDockWidget,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QMainWindow,
     QMessageBox,
     QProgressDialog,
+    QSpinBox,
     QTabWidget,
     QWidget,
 )
 
 from collagio import __version__
 from collagio.app.canvas_view import CanvasView
-from collagio.app.panels import CanvasPanel, LayoutPanel, PhotoListPanel, StylePanel
+from collagio.app.panels import CanvasPanel, LayoutPanel, PhotoListPanel, StylePanel, TextPanel
 from collagio.app.preview import PreviewRenderer
 from collagio.app.workers import ExportJob
 from collagio.core.document import AUTOSAVE_NAME, Document
@@ -32,7 +39,47 @@ MAX_RECENT = 8
 AUTOSAVE_INTERVAL_MS = 120_000
 PROJECT_FILTER = f"Collagio projects (*{PROJECT_SUFFIX})"
 IMAGE_FILTER = "Photos ({})".format(" ".join(f"*{s}" for s in sorted(SUPPORTED_SUFFIXES)))
-EXPORT_FILTER = "PNG image (*.png);;JPEG image (*.jpg *.jpeg)"
+EXPORT_FILTER = "PNG image (*.png);;JPEG image (*.jpg *.jpeg);;PDF for printing (*.pdf)"
+
+
+@dataclass
+class ExportOptions:
+    quality: int = 92
+    bleed_mm: float = 0.0
+    crop_marks: bool = False
+
+
+class ExportOptionsDialog(QDialog):
+    """Quality for JPEG/PDF, and bleed/crop marks for printing."""
+
+    def __init__(self, path: Path, options: ExportOptions, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(self.tr("Export options"))
+        pdf = path.suffix.lower() == ".pdf"
+        self.quality = QSpinBox()
+        self.quality.setRange(1, 100)
+        self.quality.setValue(options.quality)
+        self.quality.setEnabled(path.suffix.lower() != ".png")
+        self.bleed = QDoubleSpinBox()
+        self.bleed.setRange(0, 20)
+        self.bleed.setSuffix(" mm")
+        self.bleed.setValue(options.bleed_mm)
+        self.crop_marks = QCheckBox(self.tr("Crop marks"))
+        self.crop_marks.setChecked(options.crop_marks and pdf)
+        self.crop_marks.setEnabled(pdf)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form = QFormLayout(self)
+        form.addRow(self.tr("Quality"), self.quality)
+        form.addRow(self.tr("Bleed"), self.bleed)
+        form.addRow(self.crop_marks)
+        form.addRow(buttons)
+
+    def options(self) -> ExportOptions:
+        return ExportOptions(self.quality.value(), self.bleed.value(), self.crop_marks.isChecked())
 
 
 def expand_paths(paths: list[str]) -> list[str]:
@@ -60,6 +107,7 @@ class MainWindow(QMainWindow):
         self.document = document if document is not None else Document()
         self.selected: list[str] = []
         self.export_job: ExportJob | None = None
+        self.export_options = ExportOptions()
         self.export_pool = QThreadPool(self)
         self.export_pool.setMaxThreadCount(1)
 
@@ -71,11 +119,14 @@ class MainWindow(QMainWindow):
         self.layout_panel = LayoutPanel(self.document)
         self.style_panel = StylePanel(self.document)
         self.canvas_panel = CanvasPanel(self.document)
+        self.text_panel = TextPanel(self.document)
         self._add_dock(self.tr("Photos"), self.photo_list, Qt.DockWidgetArea.LeftDockWidgetArea)
         tabs = QTabWidget()
         tabs.addTab(self.layout_panel, self.tr("Layout"))
         tabs.addTab(self.style_panel, self.tr("Style"))
         tabs.addTab(self.canvas_panel, self.tr("Canvas"))
+        tabs.addTab(self.text_panel, self.tr("Text"))
+        self.tabs = tabs
         self._add_dock(self.tr("Settings"), tabs, Qt.DockWidgetArea.RightDockWidgetArea)
 
         self._create_actions()
@@ -205,8 +256,10 @@ class MainWindow(QMainWindow):
         self.photo_list.list.files_dropped.connect(self.add_photos)
         self.photo_list.icon_requested.connect(self.renderer.render_icon)
         self.renderer.icon_ready.connect(self.photo_list.set_icon)
-        for panel in (self.layout_panel, self.style_panel, self.canvas_panel):
+        for panel in (self.layout_panel, self.style_panel, self.canvas_panel, self.text_panel):
             panel.error.connect(self.show_error)
+        self.canvas.text_selected.connect(self._on_canvas_text)
+        self.text_panel.text_selected.connect(self.canvas.select_text)
 
     # --- document --------------------------------------------------------------------------------
 
@@ -217,7 +270,7 @@ class MainWindow(QMainWindow):
 
     def set_document(self, document: Document) -> None:
         self.document = document
-        for panel in (self.layout_panel, self.style_panel, self.canvas_panel):
+        for panel in (self.layout_panel, self.style_panel, self.canvas_panel, self.text_panel):
             panel.document = document
         self._watch(document)
         self.selected = []
@@ -234,6 +287,7 @@ class MainWindow(QMainWindow):
         self.layout_panel.refresh()
         self.style_panel.set_selection(self.selected)
         self.canvas_panel.refresh()
+        self.text_panel.refresh(self.canvas.selected_text)
         self.setWindowTitle(f"{document.title} \u2013 Collagio")
         stack = document.undo_stack
         self.undo_action.setEnabled(stack.can_undo)
@@ -246,7 +300,7 @@ class MainWindow(QMainWindow):
 
     def _update_selection_actions(self) -> None:
         single = len(self.selected) == 1
-        self.remove_action.setEnabled(bool(self.selected))
+        self.remove_action.setEnabled(bool(self.selected) or self.canvas.selected_text is not None)
         for action in (self.front_action, self.back_action, self.reset_crop_action):
             action.setEnabled(single)
 
@@ -254,6 +308,12 @@ class MainWindow(QMainWindow):
         self.selected = list(photo_ids)
         self.photo_list.select(self.selected)
         self.style_panel.set_selection(self.selected)
+        self._update_selection_actions()
+
+    def _on_canvas_text(self, text_id: str | None) -> None:
+        self.text_panel.select(text_id)
+        if text_id is not None:
+            self.tabs.setCurrentWidget(self.text_panel)
         self._update_selection_actions()
 
     def _on_list_selection(self, photo_ids: list[str]) -> None:
@@ -284,6 +344,10 @@ class MainWindow(QMainWindow):
         self._run(lambda: self.document.add_photos(photos))
 
     def remove_selected(self) -> None:
+        text_id = self.canvas.selected_text
+        if text_id is not None:
+            self._run(lambda: self.document.remove_texts([text_id]))
+            return
         if self.selected:
             ids = list(self.selected)
             self._run(lambda: self.document.remove_photos(ids))
@@ -437,13 +501,26 @@ class MainWindow(QMainWindow):
             str(start) if start else self._last_folder(),
             EXPORT_FILTER,
         )
-        if path:
-            self.export(Path(path))
+        if not path:
+            return
+        options = self.ask_export_options(Path(path))
+        if options is not None:
+            self.export(Path(path), options)
 
-    def export(self, path: Path, quality: int = 92) -> ExportJob | None:
+    def ask_export_options(self, path: Path) -> ExportOptions | None:
+        dialog = ExportOptionsDialog(path, self.export_options, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        self.export_options = dialog.options()
+        return self.export_options
+
+    def export(self, path: Path, options: ExportOptions | None = None) -> ExportJob | None:
         if not self.document.project.photos:
             return None
-        job = ExportJob(self.document.project, path, quality)
+        options = options if options is not None else ExportOptions()
+        job = ExportJob(
+            self.document.project, path, options.quality, options.bleed_mm, options.crop_marks
+        )
         progress = QProgressDialog(
             self.tr("Exporting {}…").format(path.name), self.tr("Cancel"), 0, 1, self
         )

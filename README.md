@@ -2,8 +2,8 @@
 
 Desktop photo collage creator for Windows and Linux.
 
-> **Status:** early development. Phases 1-4 are done: the desktop editor and the command line
-> work; print/PDF export, German UI and installers follow.
+> **Status:** early development. Phases 1-5 are done: desktop editor, command line and
+> print-ready PDF export work; German UI and installers follow.
 > The desktop GUI follows in Phase 4.
 
 ## Planned features
@@ -38,7 +38,11 @@ uv run collagio-gui      # optionally followed by photos, folders or a .collagio
 - **Alt+drag** moves the photo inside its frame, **Ctrl+wheel** zooms it; *Edit > Reset crop*
   goes back to the automatic crop. The **mouse wheel** zooms the view, the **middle button** pans.
 - Right-click a photo for stacking order, crop reset and removal. Undo/redo covers every edit.
-- **File > Export image** renders the full-resolution PNG/JPEG in the background (cancellable).
+- The **Text** tab adds titles and captions (size, colour, rotation, font, shadow); drag them on
+  the canvas to move them. The **Canvas** tab offers solid, gradient, paper/cork/wood texture
+  and blurred-photo backgrounds, and shows the size in mm.
+- **File > Export image** renders the full-resolution PNG, JPEG or PDF in the background
+  (cancellable); the options ask for quality, bleed and, for PDF, crop marks.
   Unsaved work is autosaved every two minutes; *File > Recover unsaved work* brings it back
   after a crash.
 
@@ -51,6 +55,8 @@ collagio -i a.jpg b.jpg c.jpg -o out.jpg --size fullhd --border 8 --corner-radiu
 collagio -i ./photos -o scattered.jpg --mode scattered --rotation 15 --overlap 0.7
 collagio -i ./photos -o mixed.jpg --mode scattered --mix stamp,polaroid,tape,torn
 collagio -i ./photos -o out.png --style polaroid --style-param "caption=Summer 2026"
+collagio -i ./photos -o print.pdf --size A4 --bleed 3 --crop-marks --title "Summer 2026"
+collagio -i ./photos -o wall.jpg --background texture:cork --style polaroid --mode scattered
 collagio --project my.collagio.json -o out.png      # re-render a saved project
 collagio --help                                     # all options
 ```
@@ -76,7 +82,13 @@ collagio --help                                     # all options
   Tiles are shaped for photo + frame, so frames do not crop the photo.
 - **Plain style shortcuts:** `--border`, `--corner-radius` in 1/1000 of the canvas short edge,
   `--border-color`
-- **Background:** one colour, or two comma-separated colours for a gradient
+- **Background:** one colour, two comma-separated colours for a gradient, `texture:paper|cork|wood`
+  (optionally `,COLOR`), or `photo:PATH` (blurred, `--background-blur`, `--background-dim`)
+- **Print:** `.pdf` output; `--bleed MM` extends the background on every side (all formats),
+  `--crop-marks` adds crop marks outside the bleed (PDF); the PDF has TrimBox and BleedBox set
+- **Title:** `--title TEXT` (`\n` for line breaks), `--title-position top|bottom|center` (top and
+  bottom keep the photos clear), `--title-size`, `--title-color`, `--title-font FILE`,
+  `--title-shadow`
 
 ## Development
 

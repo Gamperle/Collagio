@@ -33,6 +33,8 @@ _MIN_SIDE_FRACTION = 0.35
 class GridSettings:
     gap: float = 0.0  # pixels
     margin: float = 0.0  # pixels
+    extra_top: float = 0.0  # pixels, kept free above the photos (e.g. for a title)
+    extra_bottom: float = 0.0  # pixels, kept free below the photos
     size_variation: float = 0.5
     order: PlacementOrder = PlacementOrder.SHAPE
     candidates: int = 16
@@ -143,7 +145,9 @@ def grid_layout(
     if not aspects:
         return []
     validate_aspects(aspects)
-    content = content_rect(width, height, settings.margin)
+    content = content_rect(
+        width, height, settings.margin, settings.extra_top, settings.extra_bottom
+    )
     target_aspect = geometric_mean(aspects)
     best: list[Rect] | None = None
     best_score = math.inf

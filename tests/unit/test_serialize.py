@@ -20,6 +20,7 @@ from collagio.core.model import (
     Rect,
     Shadow,
     StyleRef,
+    TextItem,
 )
 from collagio.core.serialize import (
     load_project,
@@ -198,3 +199,60 @@ def test_migrations_run_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_from_dict(document)
     assert calls == [1, 2]
     assert project.canvas.width == 111
+
+
+# --- schema 2: texts and new backgrounds --------------------------------------------------------
+
+
+def test_texts_and_backgrounds_round_trip(tmp_path: Path) -> None:
+    project = _project(tmp_path / "photos")
+    project.canvas.background = Background(
+        BackgroundKind.PHOTO, photo=str(tmp_path / "photos" / "bg.jpg"), blur=40, dim=0.5
+    )
+    project.texts = [
+        TextItem("t001", "Summer\n2026", 100.5, 200, size=80, color="#ffffff", rotation=-5,
+                 font=str(tmp_path / "fonts" / "hand.ttf"), shadow=True),
+        TextItem("t002", "x", 1, 2),
+    ]  # fmt: skip
+    project.layout.space_bottom = 0.1
+    path = tmp_path / "p.collagio.json"
+    save_project(project, path)
+    document = json.loads(path.read_text())
+    assert document["schema_version"] == 2
+    assert document["canvas"]["background"]["photo"] == "photos/bg.jpg"
+    assert document["texts"][0]["font"] == "fonts/hand.ttf"
+    assert load_project(path) == project
+
+
+def test_texture_background_round_trip() -> None:
+    background = Background(BackgroundKind.TEXTURE, "#aa8866", texture="cork")
+    project = Project(canvas=Canvas(10, 10, background=background))
+    assert project_from_dict(project_to_dict(project)) == project
+
+
+def test_schema_1_documents_still_load() -> None:
+    document = {
+        "app": "collagio",
+        "schema_version": 1,
+        "canvas": {"width": 100, "height": 50, "background": {"kind": "solid", "color": "#fff"}},
+        "photos": [{"id": "a", "path": "a.jpg"}],
+    }
+    project = project_from_dict(document)
+    assert project.texts == []
+    assert project.canvas.background.texture == "paper"
+    assert project.layout.space_top == 0.0
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d["texts"].append({"id": "t", "text": "x"}),  # no position
+        lambda d: d["texts"].append({"id": "t", "text": "x", "x": "left", "y": 0}),
+        lambda d: d["canvas"]["background"].update(kind="hologram"),
+    ],
+)
+def test_invalid_schema_2_parts(mutate: Any) -> None:
+    document = _valid()
+    mutate(document)
+    with pytest.raises(ProjectFormatError, match="invalid project file"):
+        project_from_dict(document)

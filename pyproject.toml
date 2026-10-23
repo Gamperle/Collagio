@@ -20,6 +20,7 @@ dependencies = [
     "pillow>=11.0",
     "numpy>=2.1",
     "shapely>=2.0",
+    "reportlab>=4.2",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +43,9 @@ dev = [
     "pre-commit>=4.0",
     "pytest-qt>=4.4",
     "pyside6-essentials>=6.8",
+    "pypdf>=5.0",
+    "pypdfium2>=4.30",
+    "types-reportlab>=5.0.0.20261008",
 ]
 
 [build-system]

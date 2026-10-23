@@ -41,6 +41,8 @@ _COVERAGE_MIN, _COVERAGE_MAX = 0.6, 1.5
 @dataclass(frozen=True)
 class ScatterSettings:
     margin: float = 0.0  # pixels
+    extra_top: float = 0.0  # pixels, kept free above the photos (e.g. for a title)
+    extra_bottom: float = 0.0  # pixels, kept free below the photos
     max_rotation: float = 12.0  # degrees, photos get a rotation in [-max, +max]
     overlap: float = 0.5  # 0 = photos barely touch, 1 = heavy overlap
     size_variation: float = 0.5
@@ -269,7 +271,9 @@ def scattered_layout(
     if not aspects:
         return []
     validate_aspects(aspects)
-    content = content_rect(width, height, settings.margin)
+    content = content_rect(
+        width, height, settings.margin, settings.extra_top, settings.extra_bottom
+    )
 
     count = len(aspects)
     rotations = [rng.uniform(-settings.max_rotation, settings.max_rotation) for _ in aspects]

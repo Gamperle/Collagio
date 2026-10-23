@@ -22,11 +22,20 @@ class ExportSignals(QObject):
 
 
 class ExportJob(QRunnable):
-    def __init__(self, project: Project, path: Path, quality: int = 92) -> None:
+    def __init__(
+        self,
+        project: Project,
+        path: Path,
+        quality: int = 92,
+        bleed_mm: float = 0.0,
+        crop_marks: bool = False,
+    ) -> None:
         super().__init__()
         self.project = copy.deepcopy(project)
         self.path = path
         self.quality = quality
+        self.bleed_mm = bleed_mm
+        self.crop_marks = crop_marks
         self.signals = ExportSignals()
         self._cancel = threading.Event()
 
@@ -40,7 +49,14 @@ class ExportJob(QRunnable):
 
     def run(self) -> None:
         try:
-            export_image(self.project, self.path, quality=self.quality, progress=self._progress)
+            export_image(
+                self.project,
+                self.path,
+                quality=self.quality,
+                progress=self._progress,
+                bleed_mm=self.bleed_mm,
+                crop_marks=self.crop_marks,
+            )
         except RenderCancelledError:
             self.signals.cancelled.emit()
         except (CollagioError, OSError) as exc:

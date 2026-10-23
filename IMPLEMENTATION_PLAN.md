@@ -208,7 +208,7 @@ Order: postage stamp → cut-out → torn → Polaroid → tape/corners → film
   - export dialog runs worker and produces file (with `qtbot.waitSignal`)
 - Run with `QT_QPA_PLATFORM=offscreen` on Linux CI; Windows runs natively.
 
-### Phase 5 – Print & PDF (M5, ≈1 week)
+### Phase 5 – Print & PDF (M5, ≈1 week) – ✅ done
 - Canvas in mm with DPI; paper presets; orientation
 - PDF export via reportlab: page size = canvas + 2 × bleed, image placed at
   full res, optional crop marks outside trim box; set TrimBox/BleedBox

@@ -13,17 +13,21 @@ from collections.abc import Callable
 
 from PIL import Image, ImageFilter
 
-from collagio.core.model import PhotoItem, Project, Shadow
+from collagio.core.model import PhotoItem, Project, Shadow, TextItem
 from collagio.core.rng import derive_seed
 from collagio.errors import RenderError
 from collagio.imaging.loader import load_image
 from collagio.imaging.smartcrop import crop_pixels, fill_crop
 from collagio.render.background import parse_color, render_background
+from collagio.render.text import render_text
 from collagio.styles import StyleContext, get_style
 from collagio.styles.base import STYLE_UNITS_PER_SHORT_EDGE
 
 Loader = Callable[[str], Image.Image]
 Progress = Callable[[int, int], None]
+
+
+TEXT_SHADOW = Shadow(opacity=0.6, blur=4.0, offset_x=2.0, offset_y=3.0)  # if shadows are off
 
 
 class RenderCancelledError(Exception):
@@ -131,27 +135,64 @@ def render_photo(
     return tile, (left + shift_x, top + shift_y)
 
 
+def text_tile(
+    project: Project, item: TextItem, scale: float
+) -> tuple[Image.Image, tuple[int, int]]:
+    """A text item as drawn on the collage, and the position of its top-left corner."""
+    unit = style_unit(project, scale)
+    tile = render_text(item, unit)
+    left = round(item.x * scale) - tile.width // 2
+    top = round(item.y * scale) - tile.height // 2
+    if item.shadow:
+        shadow = project.shadow if project.shadow.opacity > 0 else TEXT_SHADOW
+        tile, (shift_x, shift_y) = add_shadow(tile, shadow, unit)
+        left, top = left + shift_x, top + shift_y
+    return tile, (left, top)
+
+
+def render_texts(project: Project, canvas: Image.Image, scale: float, offset: int = 0) -> None:
+    """Draw the project's text items onto `canvas` (`offset`: bleed in pixels)."""
+    for item in project.texts:
+        tile, (left, top) = text_tile(project, item, scale)
+        canvas.paste(tile, (left + offset, top + offset), tile)
+
+
 def render_project(
     project: Project,
     scale: float = 1.0,
     loader: Loader = load_image,
     progress: Progress | None = None,
+    bleed: float = 0.0,
 ) -> Image.Image:
     """The whole collage. `progress(done, total)` is called after each photo; it
-    may raise (e.g. RenderCancelledError) to stop rendering."""
+    may raise (e.g. RenderCancelledError) to stop rendering.
+
+    `bleed` (canvas pixels) extends the image on every side; the background
+    fills it and everything else moves inwards by the same amount.
+    """
     if scale <= 0:
         raise RenderError(f"scale must be positive, got {scale}")
+    if bleed < 0:
+        raise RenderError(f"bleed must not be negative, got {bleed}")
+    offset = round(bleed * scale)
     size = (
-        max(1, round(project.canvas.width * scale)),
-        max(1, round(project.canvas.height * scale)),
+        max(1, round(project.canvas.width * scale)) + 2 * offset,
+        max(1, round(project.canvas.height * scale)) + 2 * offset,
     )
-    canvas = render_background(project.canvas.background, size)
+    canvas = render_background(
+        project.canvas.background,
+        size,
+        unit=style_unit(project, scale),
+        seed=project.seed,
+        loader=loader,
+    )
     total = len(project.photos)
     if progress is not None:
         progress(0, total)
     for done, item in enumerate(sorted(project.photos, key=lambda p: p.z), start=1):
-        tile, position = render_photo(project, item, scale, loader)
-        canvas.paste(tile, position, tile)
+        tile, (left, top) = render_photo(project, item, scale, loader)
+        canvas.paste(tile, (left + offset, top + offset), tile)
         if progress is not None:
             progress(done, total)
+    render_texts(project, canvas, scale, offset)
     return canvas

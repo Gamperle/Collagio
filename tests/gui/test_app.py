@@ -7,13 +7,19 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
+from pypdf import PdfReader
 from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QDropEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
 from collagio.app.main import build_window
-from collagio.app.main_window import MainWindow, expand_paths
+from collagio.app.main_window import (
+    ExportOptions,
+    ExportOptionsDialog,
+    MainWindow,
+    expand_paths,
+)
 from collagio.app.workers import ExportJob
 from collagio.core.geometry import centre, photo_at
 from collagio.core.model import LayoutMode, LayoutSettings, PhotoItem, Rect, StyleRef
@@ -489,3 +495,154 @@ def test_undo_redo_actions(loaded: MainWindow) -> None:
     assert loaded.redo_action.text() == "&Redo Add photos"
     loaded.redo_action.trigger()
     assert len(loaded.document.project.photos) == 8
+
+
+# --- phase 5: texts, backgrounds, print export ----------------------------------------------------
+
+
+def test_text_panel_add_edit_remove(loaded: MainWindow) -> None:
+    panel = loaded.text_panel
+    panel.add_button.click()
+    assert [t.text for t in loaded.document.project.texts] == ["Text"]
+    assert panel.current_id() == "t001"
+    assert loaded.canvas.selected_text == "t001"
+    assert "t001" in loaded.canvas.text_items
+    panel.text_edit.setPlainText("Summer\n2026")
+    panel.size_spin.setValue(120)
+    panel.color.set_color("#ff0000")
+    panel.rotation.setValue(-10)
+    panel.shadow.setChecked(True)
+    panel.apply_button.click()
+    text = loaded.document.project.texts[0]
+    assert (text.text, text.size, text.color, text.rotation, text.shadow) == (
+        "Summer\n2026", 120, "#ff0000", -10, True,
+    )  # fmt: skip
+    assert panel.list.item(0).text() == "Summer"
+    panel.remove_button.click()
+    assert loaded.document.project.texts == []
+    assert loaded.canvas.text_items == {}
+
+
+def test_text_with_missing_font_reports(
+    loaded: MainWindow, errors: list[str], tmp_path: Path
+) -> None:
+    loaded.text_panel.add_button.click()
+    loaded.text_panel.font_edit.setText(str(tmp_path / "missing.ttf"))
+    loaded.text_panel.apply_button.click()
+    assert any("cannot load font" in e for e in errors)
+    assert loaded.document.project.texts[0].font == ""  # rejected: nothing changed
+
+
+def test_drag_text_on_canvas(loaded: MainWindow) -> None:
+    text_id = loaded.document.add_text("Drag me", size=150.0)
+    # Copy the coordinates: the edit updates the text object in place.
+    x, y = loaded.document.project.texts[0].x, loaded.document.project.texts[0].y
+    loaded.canvas.select_text(None)
+    drag(loaded, (x, y), (x + 200, y + 100))
+    moved = loaded.document.project.texts[0]
+    assert moved.x - x == pytest.approx(200, abs=6)
+    assert moved.y - y == pytest.approx(100, abs=6)
+    assert loaded.canvas.selected_text == text_id
+    assert loaded.text_panel.current_id() == text_id
+    assert loaded.undo_action.text() == "&Undo Move text"
+
+
+def test_clicking_a_photo_deselects_the_text(loaded: MainWindow) -> None:
+    loaded.document.add_text("Hi", x=200.0, y=200.0)
+    loaded.canvas.select_text("t001")
+    click(loaded, *_visible_point(loaded, "p005"))
+    assert loaded.canvas.selected_text is None
+    assert loaded.canvas.selected == ["p005"]
+
+
+def test_delete_removes_selected_text(loaded: MainWindow) -> None:
+    loaded.document.add_text("Bye")
+    loaded.canvas.select_text("t001")
+    assert loaded.remove_action.isEnabled()
+    loaded.remove_action.trigger()
+    assert loaded.document.project.texts == []
+    assert len(loaded.document.project.photos) == 8
+
+
+def test_layout_space_fields(loaded: MainWindow) -> None:
+    loaded.layout_panel.space_bottom.setValue(10)
+    loaded.layout_panel.apply_button.click()
+    assert loaded.document.project.layout.space_bottom == pytest.approx(0.1)
+    bottom = max(p.rect.bottom for p in loaded.document.project.photos if p.rect is not None)
+    assert bottom <= 3508 - 0.02 * 2480 - 248 + 1e-6
+
+
+def test_canvas_panel_texture_and_size_label(loaded: MainWindow) -> None:
+    panel = loaded.canvas_panel
+    assert panel.size_label.text() == "210 × 297 mm"
+    panel.background_kind.setCurrentIndex(panel.background_kind.findData("texture"))
+    assert panel._form.isRowVisible(panel.texture)
+    assert not panel._form.isRowVisible(panel.color2)
+    panel.texture.setCurrentIndex(panel.texture.findData("cork"))
+    assert panel.color.color == "#b8875a"
+    panel.apply_button.click()
+    background = loaded.document.project.canvas.background
+    assert (background.kind.value, background.texture, background.color) == (
+        "texture",
+        "cork",
+        "#b8875a",
+    )
+
+
+def test_canvas_panel_photo_background(
+    loaded: MainWindow, sample_photos: list[Path], qtbot: QtBot
+) -> None:
+    panel = loaded.canvas_panel
+    panel.background_kind.setCurrentIndex(panel.background_kind.findData("photo"))
+    assert panel._form.isRowVisible(panel.blur)
+    assert not panel._form.isRowVisible(panel.color)
+    panel.photo.setText(str(sample_photos[3]))
+    panel.blur.setValue(40)
+    panel.dim.setValue(0.5)
+    panel.apply_button.click()
+    background = loaded.document.project.canvas.background
+    assert (background.photo, background.blur, background.dim) == (str(sample_photos[3]), 40, 0.5)
+    settle(loaded, qtbot)
+    assert not loaded.canvas._background.pixmap().isNull()
+
+
+def test_export_pdf_with_options(loaded: MainWindow, qtbot: QtBot, tmp_path: Path) -> None:
+    target = tmp_path / "print.pdf"
+    job = loaded.export(target, ExportOptions(quality=90, bleed_mm=3, crop_marks=True))
+    assert job is not None
+    with qtbot.waitSignal(job.signals.finished, timeout=30_000):
+        pass
+    page = PdfReader(target).pages[0]
+    assert float(page.trimbox.width) == pytest.approx(210 / 25.4 * 72, abs=0.5)
+    assert float(page.mediabox.width) == pytest.approx((210 + 6 + 16) / 25.4 * 72, abs=0.5)
+
+
+def test_export_options_dialog(window: MainWindow, tmp_path: Path) -> None:
+    pdf = ExportOptionsDialog(tmp_path / "a.pdf", ExportOptions(80, 3, True))
+    assert pdf.crop_marks.isEnabled() and pdf.crop_marks.isChecked()
+    assert pdf.options() == ExportOptions(80, 3.0, True)
+    png = ExportOptionsDialog(tmp_path / "a.png", ExportOptions(80, 3, True))
+    assert not png.crop_marks.isEnabled()
+    assert not png.quality.isEnabled()
+    assert png.options().crop_marks is False
+
+
+def test_export_dialog_flow(
+    loaded: MainWindow, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "flow.jpg"
+    monkeypatch.setattr(
+        "collagio.app.main_window.QFileDialog.getSaveFileName", lambda *a, **k: (str(target), "")
+    )
+    loaded.ask_export_options = lambda path: ExportOptions(85, 2.0, False)  # type: ignore[method-assign]
+    loaded.export_dialog()
+    assert loaded.export_job is not None
+    with qtbot.waitSignal(loaded.export_job.signals.finished, timeout=30_000):
+        pass
+    with Image.open(target) as image:
+        bleed = round(2 / 25.4 * 300)
+        assert image.size == (2480 + 2 * bleed, 3508 + 2 * bleed)
+    loaded.ask_export_options = lambda path: None  # type: ignore[method-assign]
+    loaded.export_job = None
+    loaded.export_dialog()  # cancelled in the options dialog
+    assert loaded.export_job is None

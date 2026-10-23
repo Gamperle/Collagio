@@ -21,6 +21,7 @@ from collagio.errors import CollagioError
 from collagio.imaging.cache import ThumbnailCache
 from collagio.render.background import render_background
 from collagio.render.renderer import render_photo
+from collagio.styles.base import STYLE_UNITS_PER_SHORT_EDGE
 
 PREVIEW_LONG_EDGE = 2000  # preview canvas size in pixels (longer side)
 SOURCE_LONG_EDGE = 2000  # photos are decoded at most this large for previews
@@ -117,6 +118,8 @@ class PreviewRenderer(QObject):
     def render_background(self, project: Project, request: int) -> None:
         background = copy.deepcopy(project.canvas.background)
         scale = preview_scale(project)
+        unit = project.canvas.short_edge * scale / STYLE_UNITS_PER_SHORT_EDGE
+        seed = project.seed
         size = (
             max(1, round(project.canvas.width * scale)),
             max(1, round(project.canvas.height * scale)),
@@ -124,7 +127,7 @@ class PreviewRenderer(QObject):
 
         def work() -> None:
             try:
-                image = render_background(background, size)
+                image = render_background(background, size, unit=unit, seed=seed, loader=self._load)
             except (CollagioError, OSError):
                 image = Image.new("RGB", size, "white")
             self._signals.background.emit(request, to_qimage(image))

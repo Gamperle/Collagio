@@ -5,7 +5,16 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from collagio.core.model import Canvas, CropBox, PhotoItem, Project, Rect, Shadow, StyleRef
+from collagio.core.model import (
+    Canvas,
+    CropBox,
+    PhotoItem,
+    Project,
+    Rect,
+    Shadow,
+    StyleRef,
+    TextItem,
+)
 from collagio.errors import RenderError
 from collagio.render.renderer import render_project
 
@@ -209,3 +218,37 @@ def test_shadow_of_upper_photo_falls_on_lower_photo() -> None:
 def test_invalid_shadow(shadow: Shadow, message: str) -> None:
     with pytest.raises(RenderError, match=message):
         render_project(_shadow_project(shadow), loader=split_image)
+
+
+# --- bleed and texts -----------------------------------------------------------------------------
+
+
+def test_bleed_extends_canvas_and_shifts_content() -> None:
+    item = PhotoItem("a", "a", rect=Rect(0, 0, 100, 100), crop=CropBox(0, 0, 0.5, 1))
+    image = render_project(_project(item), loader=split_image, bleed=10)
+    assert image.size == (220, 120)
+    assert image.getpixel((5, 5)) == WHITE  # bleed: background
+    assert image.getpixel((12, 12)) == RED  # photo moved by the bleed
+
+
+def test_negative_bleed() -> None:
+    with pytest.raises(RenderError, match="bleed"):
+        render_project(_project(), loader=split_image, bleed=-1)
+
+
+def test_texts_are_drawn_above_photos() -> None:
+    item = PhotoItem("a", "a", rect=Rect(0, 0, 200, 100), crop=CropBox(0, 0, 0.5, 1))
+    project = _project(item)
+    project.texts.append(TextItem("t", "XXXX", x=100, y=50, size=300, color="#00ff00"))
+    image = render_project(project, loader=split_image)
+    assert (0, 255, 0) in {image.getpixel((x, 50)) for x in range(60, 140)}
+
+
+def test_text_shadow_uses_project_shadow_or_default() -> None:
+    project = _project()
+    project.texts.append(TextItem("t", "XX", x=100, y=50, size=300, color="#ffffff", shadow=True))
+    with_shadow = render_project(project, loader=split_image)
+    project.texts[0].shadow = False
+    without = render_project(project, loader=split_image)
+    assert with_shadow.tobytes() != without.tobytes()
+    assert with_shadow.convert("L").getextrema()[0] < without.convert("L").getextrema()[0]

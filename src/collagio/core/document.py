@@ -29,12 +29,15 @@ from collagio.core.model import (
     Rect,
     Shadow,
     StyleRef,
+    TextItem,
 )
 from collagio.core.serialize import PROJECT_SUFFIX, load_project, save_project
 from collagio.core.undo import UndoStack
 from collagio.errors import EditError
 from collagio.imaging.loader import oriented_size
 from collagio.layout.apply import SizeOf, apply_layout
+from collagio.render.background import parse_color
+from collagio.render.text import text_size
 
 Listener = Callable[[], None]
 
@@ -233,3 +236,61 @@ class Document:
 
     def restack(self, photo_id: str, to_front: bool) -> None:
         self.execute(Restack(photo_id, to_front))
+
+    # --- texts ---------------------------------------------------------------------------------
+
+    def _text_index(self, text_id: str) -> int:
+        for index, text in enumerate(self.project.texts):
+            if text.id == text_id:
+                return index
+        raise EditError(f"no text with id {text_id!r}")
+
+    @staticmethod
+    def _check_text(item: TextItem) -> None:
+        """Fail before the project changes if the font or colour cannot be used."""
+        parse_color(item.color)
+        text_size(item, 1.0)
+
+    def add_text(self, text: str = "Text", **fields: object) -> str:
+        """Add a text in the middle of the canvas (or where `fields` say); returns its id."""
+        number = 1 + max(
+            (int(t.id[1:]) for t in self.project.texts if t.id[1:].isdigit()), default=0
+        )
+        canvas = self.project.canvas
+        item = TextItem(f"t{number:03d}", text, canvas.width / 2, canvas.height / 2)
+        for name, value in fields.items():
+            if not hasattr(item, name):
+                raise EditError(f"unknown text field {name!r}")
+            setattr(item, name, value)
+        self._check_text(item)
+        self._edit("Add text", lambda p: p.texts.append(copy.deepcopy(item)), relayout=False)
+        return item.id
+
+    def update_text(self, item: TextItem) -> None:
+        """Replace the text with the same id."""
+        index = self._text_index(item.id)
+        self._check_text(item)
+
+        def change(project: Project) -> None:
+            project.texts[index] = copy.deepcopy(item)
+
+        self._edit("Edit text", change, relayout=False)
+
+    def move_text(self, text_id: str, x: float, y: float) -> None:
+        index = self._text_index(text_id)
+
+        def change(project: Project) -> None:
+            project.texts[index].x, project.texts[index].y = x, y
+
+        self._edit("Move text", change, relayout=False)
+
+    def remove_texts(self, text_ids: Iterable[str]) -> None:
+        ids = set(text_ids)
+        for text_id in ids:
+            self._text_index(text_id)
+        if ids:
+            self._edit(
+                "Remove text",
+                lambda p: setattr(p, "texts", [t for t in p.texts if t.id not in ids]),
+                relayout=False,
+            )

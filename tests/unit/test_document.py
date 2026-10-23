@@ -14,6 +14,7 @@ from collagio.core.model import (
     Rect,
     Shadow,
     StyleRef,
+    TextItem,
 )
 from collagio.core.serialize import load_project
 from collagio.errors import EditError, ImageLoadError, LayoutError
@@ -234,3 +235,54 @@ def test_move_photos_is_one_undo_step() -> None:
     assert [p.rect for p in doc.project.photos] == before
     doc.move_photos({"p003": (Rect(1, 1, 10, 10), 0.0)}, "Move photo")
     assert doc.project.photos[2].rect == Rect(1, 1, 10, 10)
+
+
+# --- texts ------------------------------------------------------------------------------------
+
+
+def test_add_edit_move_remove_texts() -> None:
+    doc = _document(2)
+    first = doc.add_text("Hello")
+    second = doc.add_text("World", size=90.0, color="#ff0000", y=100.0)
+    assert (first, second) == ("t001", "t002")
+    text = doc.project.texts[0]
+    assert (text.x, text.y) == (2480 / 2, 3508 / 2)
+    assert (doc.project.texts[1].size, doc.project.texts[1].y) == (90.0, 100.0)
+
+    changed = TextItem(first, "Hi", 10, 20, size=30, rotation=5)
+    doc.update_text(changed)
+    assert doc.project.texts[0] == changed
+    doc.move_text(second, 7, 8)
+    assert (doc.project.texts[1].x, doc.project.texts[1].y) == (7, 8)
+    doc.remove_texts([first])
+    assert [t.id for t in doc.project.texts] == [second]
+    assert doc.add_text("again") == "t003"
+    for _ in range(5):
+        doc.undo()
+    assert [t.text for t in doc.project.texts] == ["Hello"]
+
+
+def test_text_errors() -> None:
+    doc = _document(2)
+    with pytest.raises(EditError, match="unknown text field 'colour'"):
+        doc.add_text("x", colour="red")
+    with pytest.raises(EditError, match="no text with id 't404'"):
+        doc.move_text("t404", 0, 0)
+    with pytest.raises(EditError, match="no text"):
+        doc.update_text(TextItem("t404", "x", 0, 0))
+    with pytest.raises(EditError, match="no text"):
+        doc.remove_texts(["t404"])
+    doc.remove_texts([])
+    assert doc.project.texts == []
+
+
+def test_invalid_texts_are_rejected(tmp_path: Path) -> None:
+    from collagio.errors import RenderError
+
+    doc = _document(2)
+    with pytest.raises(RenderError, match="cannot load font"):
+        doc.add_text("x", font=str(tmp_path / "missing.ttf"))
+    text_id = doc.add_text("x")
+    with pytest.raises(RenderError, match="invalid colour"):
+        doc.update_text(TextItem(text_id, "x", 0, 0, color="nope"))
+    assert doc.project.texts[0].color == "#222222"

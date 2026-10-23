@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from PIL import Image
+from pypdf import PdfReader
 
 import collagio
 from collagio.cli.main import main
@@ -59,6 +60,10 @@ def test_help_lists_presets_and_styles(capsys: pytest.CaptureFixture[str]) -> No
         (["-i", "a", "-o", "x.png", "--min-visible", "-0.1"], "must be between 0 and 1"),
         (["-i", "a", "-o", "x.png", "--shadow", "2"], "must be between 0 and 1"),
         (["-i", "a", "-o", "x.png", "--shadow-blur", "-1"], "must not be negative"),
+        (["-i", "a", "-o", "x.png", "--bleed", "-1"], "must not be negative"),
+        (["-i", "a", "-o", "x.png", "--title-size", "0"], "must be positive"),
+        (["-i", "a", "-o", "x.png", "--title-position", "left"], "invalid choice"),
+        (["-i", "a", "-o", "x.png", "--background-dim", "2"], "must be between 0 and 1"),
         (["-i", "a", "-o", "x.png", "--swap", "1"], "two photos separated by a comma"),
         (["-i", "a", "-o", "x.png", "--swap", "1,"], "two photos separated by a comma"),
         (["-p", "p.json", "-o", "x.png", "--order", "input"], "--order only applies"),
@@ -193,6 +198,7 @@ def test_style_and_background_options_are_saved(
     assert document["layout"] == {
         "mode": "grid", "gap": 0.02, "margin": 0.05, "size_variation": 0.8, "order": "random",
         "max_rotation": 12.0, "overlap": 0.5, "min_visible": 0.5,
+        "space_top": 0.0, "space_bottom": 0.0,
     }  # fmt: skip
     assert document["default_style"] == {
         "name": "plain",
@@ -449,3 +455,122 @@ def test_style_usage_errors(
         main(["-i", "a", "-o", "x.png", *argv])
     assert exc.value.code == 2
     assert message in capsys.readouterr().err
+
+
+# --- print output, backgrounds and titles -----------------------------------------------------
+
+
+def test_pdf_with_bleed_and_crop_marks(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "print.pdf"
+    code, _, err = _run(
+        capsys, "-i", str(photo_dir), "-o", str(out), "--size", "A6", "--dpi", "100",
+        "--bleed", "3", "--crop-marks", "--seed", "1",
+    )  # fmt: skip
+    assert code == 0, err
+    page = PdfReader(out).pages[0]
+    assert float(page.trimbox.width) == pytest.approx(105 / 25.4 * 72, abs=0.5)
+    assert float(page.bleedbox.width) == pytest.approx(111 / 25.4 * 72, abs=0.5)
+
+
+def test_crop_marks_need_pdf(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    code, _, err = _run(capsys, "-i", str(photo_dir), "-o", str(tmp_path / "x.png"), "--crop-marks")
+    assert (code, "crop marks need PDF" in err) == (1, True)
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        ("texture:cork", {"kind": "texture", "texture": "cork", "color": "#b8875a"}),
+        ("texture:wood,#554433", {"kind": "texture", "texture": "wood", "color": "#554433"}),
+        ("#123456,#654321", {"kind": "gradient", "color": "#123456", "color2": "#654321"}),
+    ],
+)
+def test_background_specs(
+    capsys: pytest.CaptureFixture[str],
+    photo_dir: Path,
+    tmp_path: Path,
+    spec: str,
+    expected: dict[str, str],
+) -> None:
+    document = _document(capsys, photo_dir, tmp_path, "--background", spec)
+    background = document["canvas"]["background"]
+    assert {key: background[key] for key in expected} == expected
+
+
+def test_photo_background(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, sample_photos: list[Path], tmp_path: Path
+) -> None:
+    background = _document(
+        capsys, photo_dir, tmp_path, "--background", f"photo:{sample_photos[2]}",
+        "--background-blur", "40", "--background-dim", "0.6",
+    )["canvas"]["background"]  # fmt: skip
+    assert background["kind"] == "photo"
+    assert background["photo"].endswith(sample_photos[2].name)
+    assert (background["blur"], background["dim"]) == (40.0, 0.6)
+
+
+@pytest.mark.parametrize(
+    ("spec", "message"),
+    [("texture:marble", "unknown texture 'marble'"), ("texture:cork,nope", "invalid colour"),
+     ("photo:/does/not/exist.jpg", "background photo not found")],
+)  # fmt: skip
+def test_bad_background_specs(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path, spec: str, message: str
+) -> None:
+    code, _, err = _run(
+        capsys, "-i", str(photo_dir), "-o", str(tmp_path / "x.png"), "--background", spec
+    )
+    assert (code, message in err) == (1, True)
+
+
+@pytest.mark.parametrize(("position", "space"), [("top", "space_top"), ("bottom", "space_bottom")])
+def test_title_reserves_space(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path, position: str, space: str
+) -> None:
+    document = _document(
+        capsys, photo_dir, tmp_path, "--title", "Summer\\n2026", "--title-position", position,
+        "--title-size", "50", "--title-color", "#ff0000", "--title-shadow",
+    )  # fmt: skip
+    assert document["layout"][space] == pytest.approx(50 * 1.5 * 2 / 1000)
+    (text,) = document["texts"]
+    assert text["text"] == "Summer\n2026"
+    assert (text["size"], text["color"], text["shadow"]) == (50.0, "#ff0000", True)
+    assert text["x"] == 200  # canvas 400 px wide
+    assert (text["y"] < 150) == (position == "top")
+
+
+def test_centred_title_reserves_nothing(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    document = _document(capsys, photo_dir, tmp_path, "--title", "Hi", "--title-position", "center")
+    assert document["layout"]["space_top"] == document["layout"]["space_bottom"] == 0.0
+    assert document["texts"][0]["y"] == 150
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [(["--title", "x", "--title-color", "nope"], "invalid colour"),
+     (["--title", "x", "--title-font", "/no/font.ttf"], "cannot load font")],
+)  # fmt: skip
+def test_bad_titles(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path,
+    extra: list[str], message: str,
+) -> None:  # fmt: skip
+    code, _, err = _run(capsys, "-i", str(photo_dir), "-o", str(tmp_path / "x.png"), *extra)
+    assert (code, message in err) == (1, True)
+
+
+def test_title_on_saved_project(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    project = _create(capsys, photo_dir, tmp_path)
+    code, _, _ = _run(
+        capsys, "-p", str(project), "-o", str(tmp_path / "y.png"), "--title", "Later",
+        "--save-project", str(project),
+    )  # fmt: skip
+    assert code == 0
+    assert json.loads(project.read_text())["texts"][0]["text"] == "Later"

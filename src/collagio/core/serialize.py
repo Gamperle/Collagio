@@ -28,13 +28,17 @@ from collagio.core.model import (
     Rect,
     Shadow,
     StyleRef,
+    TextItem,
 )
 from collagio.errors import ProjectFormatError
 
 PROJECT_SUFFIX = ".collagio.json"
 
 # Upgrades a document from version N to N + 1, keyed by N.
-MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    # 2 added text items and texture/photo backgrounds; all optional with defaults.
+    1: lambda document: document,
+}
 
 
 def _portable_path(path: str, base_dir: Path | None) -> str:
@@ -85,6 +89,10 @@ def project_to_dict(project: Project, base_dir: Path | None = None) -> dict[str,
                 "color": bg.color,
                 "color2": bg.color2,
                 "angle": bg.angle,
+                "texture": bg.texture,
+                "photo": _portable_path(bg.photo, base_dir) if bg.photo else "",
+                "blur": bg.blur,
+                "dim": bg.dim,
             },
         },
         "layout": {
@@ -96,6 +104,8 @@ def project_to_dict(project: Project, base_dir: Path | None = None) -> dict[str,
             "max_rotation": project.layout.max_rotation,
             "overlap": project.layout.overlap,
             "min_visible": project.layout.min_visible,
+            "space_top": project.layout.space_top,
+            "space_bottom": project.layout.space_bottom,
         },
         "shadow": {
             "opacity": project.shadow.opacity,
@@ -105,6 +115,20 @@ def project_to_dict(project: Project, base_dir: Path | None = None) -> dict[str,
             "color": project.shadow.color,
         },
         "default_style": _style_to_dict(project.default_style),
+        "texts": [
+            {
+                "id": text.id,
+                "text": text.text,
+                "x": text.x,
+                "y": text.y,
+                "size": text.size,
+                "color": text.color,
+                "rotation": text.rotation,
+                "font": _portable_path(text.font, base_dir) if text.font else "",
+                "shadow": text.shadow,
+            }
+            for text in project.texts
+        ],
         "photos": [
             {
                 "id": item.id,
@@ -154,6 +178,22 @@ def _photo_from_dict(data: dict[str, Any], base_dir: Path | None) -> PhotoItem:
     )
 
 
+def _text_from_dict(data: dict[str, Any], base_dir: Path | None) -> TextItem:
+    defaults = TextItem("", "", 0.0, 0.0)
+    font = str(data.get("font", ""))
+    return TextItem(
+        id=str(data["id"]),
+        text=str(data["text"]),
+        x=float(data["x"]),
+        y=float(data["y"]),
+        size=float(data.get("size", defaults.size)),
+        color=str(data.get("color", defaults.color)),
+        rotation=float(data.get("rotation", defaults.rotation)),
+        font=_resolve_path(font, base_dir) if font else "",
+        shadow=bool(data.get("shadow", False)),
+    )
+
+
 def project_from_dict(data: Any, base_dir: Path | None = None) -> Project:
     if not isinstance(data, dict) or data.get("app") != "collagio":
         raise ProjectFormatError("not a Collagio project file")
@@ -167,6 +207,10 @@ def project_from_dict(data: Any, base_dir: Path | None = None) -> Project:
             color=str(bg_data.get("color", defaults.color)),
             color2=str(bg_data.get("color2", defaults.color2)),
             angle=float(bg_data.get("angle", defaults.angle)),
+            texture=str(bg_data.get("texture", defaults.texture)),
+            photo=_resolve_path(str(bg_data["photo"]), base_dir) if bg_data.get("photo") else "",
+            blur=float(bg_data.get("blur", defaults.blur)),
+            dim=float(bg_data.get("dim", defaults.dim)),
         )
         canvas = Canvas(
             width=int(canvas_data["width"]),
@@ -185,6 +229,8 @@ def project_from_dict(data: Any, base_dir: Path | None = None) -> Project:
             max_rotation=float(layout_data.get("max_rotation", layout_defaults.max_rotation)),
             overlap=float(layout_data.get("overlap", layout_defaults.overlap)),
             min_visible=float(layout_data.get("min_visible", layout_defaults.min_visible)),
+            space_top=float(layout_data.get("space_top", layout_defaults.space_top)),
+            space_bottom=float(layout_data.get("space_bottom", layout_defaults.space_bottom)),
         )
         shadow_data = data.get("shadow", {})
         shadow_defaults = Shadow()
@@ -199,12 +245,14 @@ def project_from_dict(data: Any, base_dir: Path | None = None) -> Project:
             _style_from_dict(data["default_style"]) if "default_style" in data else StyleRef()
         )
         photos = [_photo_from_dict(p, base_dir) for p in data.get("photos", [])]
+        texts = [_text_from_dict(t, base_dir) for t in data.get("texts", [])]
         return Project(
             canvas=canvas,
             photos=photos,
             layout=layout,
             default_style=default_style,
             shadow=shadow,
+            texts=texts,
             seed=int(data.get("seed", 0)),
         )
     except (KeyError, TypeError, ValueError, AttributeError) as exc:

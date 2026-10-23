@@ -46,10 +46,12 @@ from PySide6.QtWidgets import (
 )
 
 from collagio.app.preview import PreviewRenderer, TileResult, preview_scale, render_key
+from collagio.app.qt_image import to_qimage
 from collagio.core.document import Document
 from collagio.core.geometry import (
     Point,
     centre,
+    contains,
     pan_crop,
     photo_at,
     resize_from_corner,
@@ -58,18 +60,24 @@ from collagio.core.geometry import (
     to_world,
     zoom_crop,
 )
-from collagio.core.model import CropBox, LayoutMode, PhotoItem, Rect
+from collagio.core.model import CropBox, LayoutMode, PhotoItem, Project, Rect, TextItem
 from collagio.errors import CollagioError
 from collagio.imaging.smartcrop import fill_crop
 from collagio.layout.scattered import rotated_corners
-from collagio.render.renderer import content_aspect
+from collagio.render.renderer import content_aspect, style_unit, text_tile
+from collagio.render.text import text_size
 
 ACCENT = QColor("#2f7de1")
+TEXT_Z = 100_000  # texts are drawn above all photos
 HANDLE_PX = 10  # handle size on screen
 ROTATE_HANDLE_PX = 28  # distance of the rotation handle above the top edge, on screen
 DRAG_THRESHOLD_PX = 4
 ZOOM_STEP = 1.15
 CROP_ZOOM_STEP = 1.1
+
+
+def canvas_key(project: Project) -> tuple[int, int]:
+    return project.canvas.width, project.canvas.height
 
 
 class Gesture(Enum):
@@ -81,6 +89,7 @@ class Gesture(Enum):
     ROTATE = auto()
     PAN_CROP = auto()
     PAN_VIEW = auto()
+    MOVE_TEXT = auto()
 
 
 @dataclass
@@ -92,6 +101,8 @@ class _Drag:
     corner: int = 0
     live: dict[str, tuple[Rect, float]] = field(default_factory=dict)  # preview of the result
     swap_target: str | None = None
+    live_offset: tuple[float, float] | None = None  # text drag: offset so far
+    text_origin: QPointF = field(default_factory=QPointF)  # text item position at the start
 
 
 class PhotoGraphicsItem(QGraphicsPixmapItem):
@@ -135,6 +146,7 @@ class PhotoGraphicsItem(QGraphicsPixmapItem):
 
 class CanvasView(QGraphicsView):
     selection_changed = Signal(list)  # photo ids
+    text_selected = Signal(object)  # text id or None
     files_dropped = Signal(list)  # paths (str)
     error = Signal(str)
 
@@ -154,7 +166,10 @@ class CanvasView(QGraphicsView):
         self.setMouseTracking(True)
 
         self.photo_items: dict[str, PhotoGraphicsItem] = {}
+        self.text_items: dict[str, QGraphicsPixmapItem] = {}
+        self._text_keys: dict[str, tuple[object, ...]] = {}
         self.selected: list[str] = []
+        self.selected_text: str | None = None
         self.auto_fit = True
         self._background = QGraphicsPixmapItem()
         self._background.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
@@ -186,7 +201,7 @@ class CanvasView(QGraphicsView):
         canvas = project.canvas
         self.scene().setSceneRect(QRectF(0, 0, canvas.width, canvas.height))
 
-        background_key = (canvas.width, canvas.height, canvas.background)
+        background_key = (canvas.width, canvas.height, canvas.background, project.seed)
         if background_key != self._background_key:
             self._background_key = background_key
             self._background_request = self.renderer.next_request()
@@ -214,6 +229,7 @@ class CanvasView(QGraphicsView):
                 item.reset_live()
                 item.place(photo.rect)
 
+        self._sync_texts()
         kept = [i for i in self.selected if i in current]
         if kept != self.selected:
             self.selected = kept
@@ -221,6 +237,36 @@ class CanvasView(QGraphicsView):
         if self.auto_fit:
             self.fit()
         self.viewport().update()
+
+    def _sync_texts(self) -> None:
+        project = self.document.project
+        scale = preview_scale(project)
+        current = {t.id for t in project.texts}
+        for text_id in list(self.text_items):
+            if text_id not in current:
+                self.scene().removeItem(self.text_items.pop(text_id))
+                self._text_keys.pop(text_id, None)
+        for index, text in enumerate(project.texts):
+            item = self.text_items.get(text.id)
+            if item is None:
+                item = QGraphicsPixmapItem()
+                item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+                self.text_items[text.id] = item
+                self.scene().addItem(item)
+            item.setZValue(TEXT_Z + index)
+            key = (repr(text), project.shadow, canvas_key(project))
+            if key != self._text_keys.get(text.id):
+                self._text_keys[text.id] = key
+                try:
+                    tile, (left, top) = text_tile(project, text, scale)
+                except CollagioError as exc:
+                    self.error.emit(str(exc))
+                    continue
+                item.setPixmap(QPixmap.fromImage(to_qimage(tile)))
+                item.setScale(1 / scale)
+                item.setPos(left / scale, top / scale)
+        if self.selected_text not in current:
+            self.select_text(None)
 
     def _on_tile(self, result: TileResult) -> None:
         if self._tile_requests.get(result.photo_id) != result.request:
@@ -267,7 +313,30 @@ class CanvasView(QGraphicsView):
     def _photo(self, photo_id: str) -> PhotoItem | None:
         return next((p for p in self.document.project.photos if p.id == photo_id), None)
 
+    def select_text(self, text_id: str | None) -> None:
+        if text_id != self.selected_text:
+            self.selected_text = text_id
+            if text_id is not None:
+                self.select([])
+            self.text_selected.emit(text_id)
+            self.viewport().update()
+
+    def _text_frame(self, text: TextItem) -> Rect:
+        try:
+            width, height = text_size(text, style_unit(self.document.project, 1.0))
+        except CollagioError:  # e.g. the font file was deleted: keep the editor usable
+            width = height = 2
+        return Rect(text.x - width / 2, text.y - height / 2, width, height)
+
+    def _text_at(self, point: Point) -> TextItem | None:
+        for text in reversed(self.document.project.texts):
+            if text.text.strip() and contains(self._text_frame(text), text.rotation, point):
+                return text
+        return None
+
     def select(self, photo_ids: list[str]) -> None:
+        if photo_ids and self.selected_text is not None:
+            self.select_text(None)
         if photo_ids != self.selected:
             self.selected = list(photo_ids)
             self.selection_changed.emit(list(photo_ids))
@@ -312,6 +381,13 @@ class CanvasView(QGraphicsView):
             super().mousePressEvent(event)
             return
 
+        text = self._text_at(point)
+        if text is not None:
+            self.select_text(text.id)
+            self._drag.gesture = Gesture.MOVE_TEXT
+            self._drag.text_origin = self.text_items[text.id].pos()
+            return
+
         handle = self._handle_at(point)
         if handle is not None:
             self._drag.photo_id, index = handle
@@ -322,6 +398,7 @@ class CanvasView(QGraphicsView):
         photo = photo_at(self.document.project.photos, point)
         if photo is None:
             self.select([])
+            self.select_text(None)
             return
         self._drag.photo_id = photo.id
         modifiers = event.modifiers()
@@ -355,7 +432,15 @@ class CanvasView(QGraphicsView):
                 return
             grid = self.document.project.layout.mode is LayoutMode.GRID
             drag.gesture = Gesture.SWAP if grid and len(self.selected) == 1 else Gesture.MOVE
-        if drag.gesture in (Gesture.MOVE, Gesture.SWAP):
+        if drag.gesture is Gesture.MOVE_TEXT and self.selected_text is not None:
+            text = next(t for t in self.document.project.texts if t.id == self.selected_text)
+            frame = self._text_frame(text)
+            dx, dy = point[0] - drag.start[0], point[1] - drag.start[1]
+            moved = Rect(frame.x + dx, frame.y + dy, frame.width, frame.height)
+            drag.live = {text.id: (moved, text.rotation)}
+            self.text_items[text.id].setPos(drag.text_origin + QPointF(dx, dy))
+            drag.live_offset = (dx, dy)
+        elif drag.gesture in (Gesture.MOVE, Gesture.SWAP):
             self._update_move(point)
         elif drag.gesture in (Gesture.RESIZE, Gesture.ROTATE):
             self._update_transform(
@@ -412,6 +497,12 @@ class CanvasView(QGraphicsView):
                 self.document.move_photos(drag.live, label)
             elif drag.gesture is Gesture.PAN_CROP and drag.photo_id is not None:
                 self._pan_crop(drag.photo_id, drag.start, point)
+            elif drag.gesture is Gesture.MOVE_TEXT and drag.live_offset is not None:
+                text_id = self.selected_text
+                assert text_id is not None
+                text = next(t for t in self.document.project.texts if t.id == text_id)
+                dx, dy = drag.live_offset
+                self.document.move_text(text_id, text.x + dx, text.y + dy)
             elif drag.gesture is Gesture.PAN_VIEW:
                 return
         except CollagioError as exc:
@@ -522,6 +613,15 @@ class CanvasView(QGraphicsView):
             frame, rotation = live.get(photo_id, (photo.rect, photo.rotation))
             corners = rotated_corners(frame, rotation)
             painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in corners]))
+
+        if self.selected_text is not None:
+            text = next(
+                (t for t in self.document.project.texts if t.id == self.selected_text), None
+            )
+            if text is not None:
+                frame, rotation = live.get(text.id, (self._text_frame(text), text.rotation))
+                corners = rotated_corners(frame, rotation)
+                painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in corners]))
 
         target = self._drag.swap_target
         if target is not None:

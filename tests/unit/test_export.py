@@ -30,7 +30,7 @@ def test_format_for_path(name: str, fmt: ExportFormat) -> None:
     assert format_for_path(Path(name)) is fmt
 
 
-@pytest.mark.parametrize("name", ["a.gif", "b.pdf", "noext"])
+@pytest.mark.parametrize("name", ["a.gif", "b.tiff", "noext"])
 def test_unsupported_format(name: str) -> None:
     with pytest.raises(ExportError, match="unsupported output format"):
         format_for_path(Path(name))

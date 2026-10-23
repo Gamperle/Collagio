@@ -201,3 +201,19 @@ def test_per_photo_styles_shape_their_own_tiles() -> None:
     first, second = project.photos[0].rect, project.photos[3].rect  # both land.jpg
     assert first is not None and second is not None
     assert first.aspect < second.aspect
+
+
+@pytest.mark.parametrize("mode", list(LayoutMode))
+def test_space_above_and_below_is_kept_free(mode: LayoutMode) -> None:
+    layout = LayoutSettings(mode=mode, margin=0.0, space_top=0.1, space_bottom=0.2, max_rotation=0)
+    project = build_project(list(SIZES) * 2, Canvas(2000, 1000), layout=layout, size_of=size_of)
+    for item in project.photos:
+        assert item.rect is not None
+        assert item.rect.y >= 100 - 1e-6
+        assert item.rect.bottom <= 1000 - 200 + 1e-6
+
+
+def test_too_much_space_is_reported() -> None:
+    layout = LayoutSettings(margin=0.1, space_top=0.5, space_bottom=0.4)
+    with pytest.raises(LayoutError, match="plus free space is too large"):
+        build_project(list(SIZES), Canvas(2000, 1000), layout=layout, size_of=size_of)

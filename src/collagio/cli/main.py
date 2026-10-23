@@ -7,6 +7,7 @@ Examples:
     collagio -i ./photos -o scattered.jpg --mode scattered --rotation 15 --overlap 0.5
     collagio -i ./photos -o mixed.jpg --mix stamp,polaroid,tape --photo-style 1=torn
     collagio -i ./photos -o out.png --style polaroid --style-param "caption=Summer 2026"
+    collagio -i ./photos -o print.pdf --size A4 --bleed 3 --crop-marks --title "Summer 2026"
     collagio --project my.collagio.json -o out.png --swap 1,4
 """
 
@@ -30,6 +31,7 @@ from collagio.core.model import (
     Project,
     Shadow,
     StyleRef,
+    TextItem,
 )
 from collagio.core.rng import derive_rng
 from collagio.core.serialize import load_project, save_project
@@ -37,8 +39,9 @@ from collagio.core.units import PAPER_SIZES_MM, PIXEL_PRESETS, Orientation, pars
 from collagio.errors import CollagioError
 from collagio.imaging.loader import find_images, is_supported
 from collagio.layout.apply import apply_layout, build_project
-from collagio.render.background import parse_color
+from collagio.render.background import TEXTURES, parse_color
 from collagio.render.export import export_image, format_for_path
+from collagio.render.text import text_size
 from collagio.styles import available_styles, get_style
 
 DEFAULT_SCATTERED_SHADOW = 0.45
@@ -69,6 +72,13 @@ def _non_negative(value: str) -> float:
     number = float(value)
     if number < 0:
         raise argparse.ArgumentTypeError(f"must not be negative, got {value}")
+    return number
+
+
+def _positive_float(value: str) -> float:
+    number = float(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError(f"must be positive, got {value}")
     return number
 
 
@@ -138,7 +148,19 @@ def build_parser() -> argparse.ArgumentParser:
     output.add_argument(
         "-o", "--output", type=Path, required=True, help="output image (.png, .jpg)"
     )
-    output.add_argument("--quality", type=int, default=92, help="JPEG quality 1-100 (default 92)")
+    output.add_argument(
+        "--quality", type=int, default=92, help="JPEG quality 1-100, also for PDF (default 92)"
+    )
+    output.add_argument(
+        "--bleed",
+        type=_non_negative,
+        default=0.0,
+        metavar="MM",
+        help="extend the background by this much on every side for printing (e.g. 3)",
+    )
+    output.add_argument(
+        "--crop-marks", action="store_true", help="draw crop marks outside the bleed (PDF only)"
+    )
     output.add_argument(
         "--save-project", type=Path, metavar="FILE", help="also save the project file"
     )
@@ -156,8 +178,36 @@ def build_parser() -> argparse.ArgumentParser:
     canvas.add_argument(
         "--background",
         default="#ffffff",
-        metavar="COLOR[,COLOR]",
-        help="background colour, or two colours for a vertical gradient",
+        metavar="SPEC",
+        help="COLOR, COLOR,COLOR (gradient), texture:NAME[,COLOR] with NAME one of "
+        f"{', '.join(TEXTURES)}, or photo:PATH (blurred photo)",
+    )
+    canvas.add_argument(
+        "--background-blur",
+        type=_non_negative,
+        default=25.0,
+        help="blur of a photo background (default 25)",
+    )
+    canvas.add_argument(
+        "--background-dim",
+        type=_unit_interval,
+        default=0.25,
+        help="darken a photo background, 0-1 (default 0.25)",
+    )
+
+    title = parser.add_argument_group("title")
+    title.add_argument("--title", help="text shown on the collage (use \\n for a new line)")
+    title.add_argument(
+        "--title-position",
+        choices=["top", "bottom", "center"],
+        default="bottom",
+        help="top and bottom keep the photos clear of the title (default bottom)",
+    )
+    title.add_argument("--title-size", type=_positive_float, default=60.0, help="default 60")
+    title.add_argument("--title-color", default="#222222", help="default #222222")
+    title.add_argument("--title-font", metavar="FILE", help="TrueType/OpenType font file")
+    title.add_argument(
+        "--title-shadow", action="store_true", help="drop shadow behind the title (readability)"
     )
 
     layout = parser.add_argument_group("layout")
@@ -273,7 +323,21 @@ def _collect_photos(inputs: Sequence[str]) -> list[Path]:
     return photos
 
 
-def _background(spec: str) -> Background:
+def _background(spec: str, blur: float = 25.0, dim: float = 0.25) -> Background:
+    kind, _, rest = spec.partition(":")
+    if kind == "texture":
+        name, _, color = rest.partition(",")
+        if name not in TEXTURES:
+            raise CollagioError(f"unknown texture {name!r}; available: {', '.join(TEXTURES)}")
+        color = color.strip() or TEXTURES[name]
+        parse_color(color)
+        return Background(kind=BackgroundKind.TEXTURE, texture=name, color=color)
+    if kind == "photo":
+        if not rest or not Path(rest).is_file():
+            raise CollagioError(f"background photo not found: {rest!r}")
+        return Background(
+            kind=BackgroundKind.PHOTO, photo=str(Path(rest).absolute()), blur=blur, dim=dim
+        )
     colors = [c.strip() for c in spec.split(",")]
     if len(colors) > 2:
         raise CollagioError("--background takes one colour or two comma-separated colours")
@@ -301,9 +365,15 @@ def _new_project(args: argparse.Namespace) -> Project:
     photos = _collect_photos(args.input)
     orientation = Orientation(args.orientation) if args.orientation else None
     width, height = parse_size(args.size, args.dpi, orientation)
+    space = _title_space(args)
     project = build_project(
         photos,
-        Canvas(width=width, height=height, dpi=args.dpi, background=_background(args.background)),
+        Canvas(
+            width=width,
+            height=height,
+            dpi=args.dpi,
+            background=_background(args.background, args.background_blur, args.background_dim),
+        ),
         LayoutSettings(
             mode=LayoutMode(args.mode),
             gap=args.gap,
@@ -313,6 +383,8 @@ def _new_project(args: argparse.Namespace) -> Project:
             max_rotation=args.rotation,
             overlap=args.overlap,
             min_visible=args.min_visible,
+            space_top=space if args.title and args.title_position == "top" else 0.0,
+            space_bottom=space if args.title and args.title_position == "bottom" else 0.0,
         ),
         _style(args),
         seed=args.seed,
@@ -325,6 +397,45 @@ def _new_project(args: argparse.Namespace) -> Project:
         blur=args.shadow_blur,
     )
     return project
+
+
+TITLE_LINE_HEIGHT = 1.5  # free space per title line, in title sizes
+
+
+def _title_text(args: argparse.Namespace) -> str:
+    return str(args.title).replace("\\n", "\n")
+
+
+def _title_space(args: argparse.Namespace) -> float:
+    """Free space for the title as a fraction of the canvas short edge."""
+    if not args.title:
+        return 0.0
+    lines = _title_text(args).count("\n") + 1
+    return float(args.title_size) * TITLE_LINE_HEIGHT * lines / 1000
+
+
+def _add_title(project: Project, args: argparse.Namespace) -> None:
+    parse_color(args.title_color)
+    canvas, layout = project.canvas, project.layout
+    margin = layout.margin * canvas.short_edge
+    if args.title_position == "top":
+        y = margin + layout.space_top * canvas.short_edge / 2
+    elif args.title_position == "bottom":
+        y = canvas.height - margin - layout.space_bottom * canvas.short_edge / 2
+    else:
+        y = canvas.height / 2
+    text = TextItem(
+        id=f"t{len(project.texts) + 1:03d}",
+        text=_title_text(args),
+        x=canvas.width / 2,
+        y=y,
+        size=args.title_size,
+        color=args.title_color,
+        font=str(Path(args.title_font).absolute()) if args.title_font else "",
+        shadow=args.title_shadow,
+    )
+    text_size(text, canvas.short_edge / 1000)  # fail early on a bad font
+    project.texts.append(text)
 
 
 def _photo_id(project: Project, token: str) -> str:
@@ -361,7 +472,15 @@ def run(args: argparse.Namespace) -> int:
             apply_layout(project)  # lay out again so every tile fits its frame
     for first, second in args.swap:
         SwapPhotos(_photo_id(project, first), _photo_id(project, second)).apply(project)
-    export_image(project, args.output, quality=args.quality)
+    if args.title:
+        _add_title(project, args)
+    export_image(
+        project,
+        args.output,
+        quality=args.quality,
+        bleed_mm=args.bleed,
+        crop_marks=args.crop_marks,
+    )
     if args.save_project is not None:
         save_project(project, args.save_project)
     print(

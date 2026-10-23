@@ -14,11 +14,16 @@ def validate_aspects(aspects: Sequence[float]) -> None:
         raise LayoutError("photo aspect ratios must be positive")
 
 
-def content_rect(width: float, height: float, margin: float) -> Rect:
-    """The canvas minus its margin on every side."""
-    content = Rect(margin, margin, width - 2 * margin, height - 2 * margin)
+def content_rect(
+    width: float, height: float, margin: float, extra_top: float = 0.0, extra_bottom: float = 0.0
+) -> Rect:
+    """The canvas minus its margin on every side and extra space at top and bottom
+    (e.g. room for a title)."""
+    top, bottom = margin + extra_top, margin + extra_bottom
+    content = Rect(margin, top, width - 2 * margin, height - top - bottom)
     if content.width <= 0 or content.height <= 0:
-        raise LayoutError(f"margin {margin:g} px is too large for {width}x{height} px")
+        what = f"margin {margin:g} px" + (" plus free space" if extra_top or extra_bottom else "")
+        raise LayoutError(f"{what} is too large for {width}x{height} px")
     return content
 
 

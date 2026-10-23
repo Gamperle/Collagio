@@ -24,9 +24,11 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
+    QCheckBox,
     QColorDialog,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -34,6 +36,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QPlainTextEdit,
     QPushButton,
     QRadioButton,
     QSpinBox,
@@ -52,12 +55,17 @@ from collagio.core.model import (
     Project,
     Shadow,
     StyleRef,
+    TextItem,
 )
-from collagio.core.units import PAPER_SIZES_MM, PIXEL_PRESETS, Orientation, parse_size
+from collagio.core.units import PAPER_SIZES_MM, PIXEL_PRESETS, Orientation, parse_size, px_to_mm
 from collagio.errors import CollagioError
+from collagio.imaging.loader import SUPPORTED_SUFFIXES
+from collagio.render.background import TEXTURES
 from collagio.styles import Style, available_styles, get_style
 
 CUSTOM = "custom"
+IMAGE_FILTER = "Photos ({})".format(" ".join(f"*{s}" for s in sorted(SUPPORTED_SUFFIXES)))
+FONT_FILTER = "Fonts (*.ttf *.otf)"
 MAX_SEED = 999_999
 
 
@@ -305,6 +313,8 @@ class LayoutPanel(QWidget):
         self.rotation = _spin(0, 45, 1, 0)
         self.overlap = _spin(0, 1, 0.05)
         self.min_visible = _spin(0, 1, 0.05)
+        self.space_top = _spin(0, 50, 0.5, 1)
+        self.space_bottom = _spin(0, 50, 0.5, 1)
         self.seed = QSpinBox()
         self.seed.setRange(0, MAX_SEED)
         self.shuffle_button = QPushButton(self.tr("Shuffle"))
@@ -319,6 +329,8 @@ class LayoutPanel(QWidget):
         form.addRow(self.tr("Max. rotation (°)"), self.rotation)
         form.addRow(self.tr("Overlap"), self.overlap)
         form.addRow(self.tr("Min. visible"), self.min_visible)
+        form.addRow(self.tr("Space above (%)"), self.space_top)
+        form.addRow(self.tr("Space below (%)"), self.space_bottom)
         seed_row = QHBoxLayout()
         seed_row.addWidget(self.seed)
         seed_row.addWidget(self.shuffle_button)
@@ -362,6 +374,8 @@ class LayoutPanel(QWidget):
         self.rotation.setValue(settings.max_rotation)
         self.overlap.setValue(settings.overlap)
         self.min_visible.setValue(settings.min_visible)
+        self.space_top.setValue(settings.space_top * 100)
+        self.space_bottom.setValue(settings.space_bottom * 100)
         self.seed.setValue(self.document.project.seed % (MAX_SEED + 1))
         self._update_visibility()
 
@@ -375,6 +389,8 @@ class LayoutPanel(QWidget):
             max_rotation=self.rotation.value(),
             overlap=self.overlap.value(),
             min_visible=self.min_visible.value(),
+            space_top=self.space_top.value() / 100,
+            space_bottom=self.space_bottom.value() / 100,
         )
 
     def apply(self) -> None:
@@ -534,18 +550,40 @@ class CanvasPanel(QWidget):
         self.background_kind = QComboBox()
         self.background_kind.addItem(self.tr("Solid colour"), BackgroundKind.SOLID)
         self.background_kind.addItem(self.tr("Gradient"), BackgroundKind.GRADIENT)
+        self.background_kind.addItem(self.tr("Texture"), BackgroundKind.TEXTURE)
+        self.background_kind.addItem(self.tr("Blurred photo"), BackgroundKind.PHOTO)
+        self.texture = QComboBox()
+        for name in TEXTURES:
+            self.texture.addItem(self.tr(name.capitalize()), name)
+        self.photo = QLineEdit()
+        self.photo.setReadOnly(True)
+        self.photo_button = QPushButton(self.tr("Choose…"))
+        self.blur = _spin(0, 200, 1, 0)
+        self.dim = _spin(0, 1, 0.05)
+        self.size_label = QLabel()
         self.color = ColorButton()
         self.color2 = ColorButton()
         self.angle = _spin(0, 360, 15, 0)
         self.apply_button = QPushButton(self.tr("Apply canvas"))
 
-        form = QFormLayout()
+        form = self._form = QFormLayout()
         form.addRow(self.tr("Size"), self.preset)
         form.addRow(self.tr("Orientation"), self.orientation)
         form.addRow(self.tr("Width"), self.width_spin)
         form.addRow(self.tr("Height"), self.height_spin)
         form.addRow(self.tr("DPI"), self.dpi)
+        form.addRow("", self.size_label)
         form.addRow(self.tr("Background"), self.background_kind)
+        form.addRow(self.tr("Texture"), self.texture)
+        photo_row = QHBoxLayout()
+        photo_row.addWidget(self.photo)
+        photo_row.addWidget(self.photo_button)
+        self._photo_row = QWidget()
+        self._photo_row.setLayout(photo_row)
+        photo_row.setContentsMargins(0, 0, 0, 0)
+        form.addRow(self.tr("Photo"), self._photo_row)
+        form.addRow(self.tr("Blur"), self.blur)
+        form.addRow(self.tr("Darken"), self.dim)
         form.addRow(self.tr("Colour"), self.color)
         form.addRow(self.tr("Second colour"), self.color2)
         form.addRow(self.tr("Gradient angle"), self.angle)
@@ -558,6 +596,10 @@ class CanvasPanel(QWidget):
             signal.connect(self._preset_changed)
         self.dpi.valueChanged.connect(self._preset_changed)
         self.background_kind.currentIndexChanged.connect(self._update_enabled)
+        self.texture.currentIndexChanged.connect(self._texture_changed)
+        self.photo_button.clicked.connect(self.choose_photo)
+        for spin in (self.width_spin, self.height_spin, self.dpi):
+            spin.valueChanged.connect(self._update_size_label)
         self.apply_button.clicked.connect(self.apply)
         self.refresh()
 
@@ -573,10 +615,38 @@ class CanvasPanel(QWidget):
             self.width_spin.setValue(width)
             self.height_spin.setValue(height)
 
+    def current_kind(self) -> BackgroundKind:
+        return BackgroundKind(self.background_kind.currentData())
+
     def _update_enabled(self) -> None:
-        gradient = BackgroundKind(self.background_kind.currentData()) is BackgroundKind.GRADIENT
-        self.color2.setEnabled(gradient)
-        self.angle.setEnabled(gradient)
+        kind = self.current_kind()
+        rows: dict[QWidget, bool] = {
+            self.texture: kind is BackgroundKind.TEXTURE,
+            self._photo_row: kind is BackgroundKind.PHOTO,
+            self.blur: kind is BackgroundKind.PHOTO,
+            self.dim: kind is BackgroundKind.PHOTO,
+            self.color: kind is not BackgroundKind.PHOTO,
+            self.color2: kind is BackgroundKind.GRADIENT,
+            self.angle: kind is BackgroundKind.GRADIENT,
+        }
+        for widget, visible in rows.items():
+            self._form.setRowVisible(widget, visible)
+
+    def _texture_changed(self) -> None:
+        self.color.set_color(TEXTURES[str(self.texture.currentData())])
+
+    def _update_size_label(self) -> None:
+        dpi = self.dpi.value()
+        width = px_to_mm(self.width_spin.value(), dpi)
+        height = px_to_mm(self.height_spin.value(), dpi)
+        self.size_label.setText(f"{width:.0f} \u00d7 {height:.0f} mm")
+
+    def choose_photo(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.tr("Background photo"), self.photo.text(), IMAGE_FILTER
+        )
+        if path:
+            self.photo.setText(path)
 
     def _matching_preset(self, canvas: Canvas) -> tuple[str, Orientation]:
         for index in range(self.preset.count()):
@@ -610,10 +680,17 @@ class CanvasPanel(QWidget):
         self.orientation.setEnabled(not custom)
         background = canvas.background
         self.background_kind.setCurrentIndex(self.background_kind.findData(background.kind))
+        self.texture.blockSignals(True)
+        self.texture.setCurrentIndex(max(0, self.texture.findData(background.texture)))
+        self.texture.blockSignals(False)
+        self.photo.setText(background.photo)
+        self.blur.setValue(background.blur)
+        self.dim.setValue(background.dim)
         self.color.set_color(background.color)
         self.color2.set_color(background.color2)
         self.angle.setValue(background.angle)
         self._update_enabled()
+        self._update_size_label()
 
     def canvas(self) -> Canvas:
         return Canvas(
@@ -621,10 +698,14 @@ class CanvasPanel(QWidget):
             height=self.height_spin.value(),
             dpi=self.dpi.value(),
             background=Background(
-                kind=BackgroundKind(self.background_kind.currentData()),
+                kind=self.current_kind(),
                 color=self.color.color,
                 color2=self.color2.color,
                 angle=self.angle.value(),
+                texture=str(self.texture.currentData()),
+                photo=self.photo.text(),
+                blur=self.blur.value(),
+                dim=self.dim.value(),
             ),
         )
 
@@ -633,3 +714,153 @@ class CanvasPanel(QWidget):
             self.document.set_canvas(self.canvas())
         except CollagioError as exc:
             self.error.emit(str(exc))
+
+
+# --- texts -------------------------------------------------------------------------------------
+
+
+class TextPanel(QWidget):
+    """List of the collage's texts and an editor for the selected one."""
+
+    error = Signal(str)
+    text_selected = Signal(object)  # text id or None
+
+    def __init__(self, document: Document, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.document = document
+        self.list = QListWidget()
+        self.add_button = QPushButton(self.tr("Add text"))
+        self.remove_button = QPushButton(self.tr("Remove"))
+        self.text_edit = QPlainTextEdit()
+        self.text_edit.setMaximumHeight(80)
+        self.size_spin = _spin(1, 1000, 5, 0)
+        self.color = ColorButton("#222222")
+        self.rotation = _spin(-180, 180, 1, 0)
+        self.font_edit = QLineEdit()
+        self.font_edit.setReadOnly(True)
+        self.font_edit.setPlaceholderText(self.tr("Built-in font"))
+        self.font_button = QPushButton(self.tr("Choose…"))
+        self.font_reset = QPushButton(self.tr("Built-in"))
+        self.shadow = QCheckBox(self.tr("Drop shadow"))
+        self.apply_button = QPushButton(self.tr("Apply text"))
+
+        buttons = QHBoxLayout()
+        buttons.addWidget(self.add_button)
+        buttons.addWidget(self.remove_button)
+        font_row = QHBoxLayout()
+        font_row.addWidget(self.font_edit)
+        font_row.addWidget(self.font_button)
+        font_row.addWidget(self.font_reset)
+        self.editor = QGroupBox(self.tr("Selected text"))
+        form = QFormLayout(self.editor)
+        form.addRow(self.tr("Text"), self.text_edit)
+        form.addRow(self.tr("Size"), self.size_spin)
+        form.addRow(self.tr("Colour"), self.color)
+        form.addRow(self.tr("Rotation (°)"), self.rotation)
+        form.addRow(self.tr("Font"), font_row)
+        form.addRow(self.shadow)
+        form.addRow(self.apply_button)
+        hint = QLabel(self.tr("Drag texts on the canvas to move them."))
+        hint.setWordWrap(True)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.list)
+        layout.addLayout(buttons)
+        layout.addWidget(self.editor)
+        layout.addWidget(hint)
+        layout.addStretch()
+
+        self._updating = False
+        self.list.itemSelectionChanged.connect(self._on_list_selection)
+        self.add_button.clicked.connect(self.add)
+        self.remove_button.clicked.connect(self.remove)
+        self.apply_button.clicked.connect(self.apply)
+        self.font_button.clicked.connect(self.choose_font)
+        self.font_reset.clicked.connect(self.font_edit.clear)
+        self.refresh()
+
+    def current_id(self) -> str | None:
+        items = self.list.selectedItems()
+        return str(items[0].data(Qt.ItemDataRole.UserRole)) if items else None
+
+    def _current_text(self) -> TextItem | None:
+        text_id = self.current_id()
+        return next((t for t in self.document.project.texts if t.id == text_id), None)
+
+    def refresh(self, selected: str | None = None) -> None:
+        selected = selected if selected is not None else self.current_id()
+        self._updating = True
+        self.list.clear()
+        for text in self.document.project.texts:
+            first_line = text.text.splitlines()[0] if text.text.strip() else self.tr("(empty)")
+            item = QListWidgetItem(first_line)
+            item.setData(Qt.ItemDataRole.UserRole, text.id)
+            self.list.addItem(item)
+            item.setSelected(text.id == selected)
+        self._updating = False
+        self._show(self._current_text())
+
+    def select(self, text_id: str | None) -> None:
+        self._updating = True
+        for row in range(self.list.count()):
+            item = self.list.item(row)
+            item.setSelected(item.data(Qt.ItemDataRole.UserRole) == text_id)
+        self._updating = False
+        self._show(self._current_text())
+
+    def _show(self, text: TextItem | None) -> None:
+        self.editor.setEnabled(text is not None)
+        self.remove_button.setEnabled(text is not None)
+        if text is None:
+            return
+        self.text_edit.setPlainText(text.text)
+        self.size_spin.setValue(text.size)
+        self.color.set_color(text.color)
+        self.rotation.setValue(text.rotation)
+        self.font_edit.setText(text.font)
+        self.shadow.setChecked(text.shadow)
+
+    def _on_list_selection(self) -> None:
+        if not self._updating:
+            self._show(self._current_text())
+            self.text_selected.emit(self.current_id())
+
+    def add(self) -> None:
+        try:
+            text_id = self.document.add_text(self.tr("Text"))
+        except CollagioError as exc:
+            self.error.emit(str(exc))
+            return
+        self.select(text_id)
+        self.text_selected.emit(text_id)
+
+    def remove(self) -> None:
+        text_id = self.current_id()
+        if text_id is not None:
+            self.document.remove_texts([text_id])
+
+    def apply(self) -> None:
+        text = self._current_text()
+        if text is None:
+            return
+        updated = TextItem(
+            id=text.id,
+            text=self.text_edit.toPlainText(),
+            x=text.x,
+            y=text.y,
+            size=self.size_spin.value(),
+            color=self.color.color,
+            rotation=self.rotation.value(),
+            font=self.font_edit.text(),
+            shadow=self.shadow.isChecked(),
+        )
+        try:
+            self.document.update_text(updated)
+        except CollagioError as exc:
+            self.error.emit(str(exc))
+
+    def choose_font(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.tr("Font"), self.font_edit.text(), FONT_FILTER
+        )
+        if path:
+            self.font_edit.setText(path)

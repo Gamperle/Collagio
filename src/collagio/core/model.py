@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MIN_PHOTOS = 2
 MAX_PHOTOS = 100
 
@@ -82,14 +82,20 @@ class PlacementOrder(StrEnum):
 class BackgroundKind(StrEnum):
     SOLID = "solid"
     GRADIENT = "gradient"
+    TEXTURE = "texture"
+    PHOTO = "photo"
 
 
 @dataclass
 class Background:
     kind: BackgroundKind = BackgroundKind.SOLID
-    color: str = "#ffffff"
+    color: str = "#ffffff"  # solid colour, gradient start, or texture base colour
     color2: str = "#d9d9d9"
     angle: float = 90.0  # gradient direction in degrees, 0 = left to right, 90 = top to bottom
+    texture: str = "paper"  # see render.background.TEXTURES
+    photo: str = ""  # photo path for kind PHOTO
+    blur: float = 25.0  # photo background blur radius, style units
+    dim: float = 0.25  # photo background: 0 = unchanged, 1 = black
 
 
 @dataclass
@@ -120,6 +126,8 @@ class LayoutSettings:
     max_rotation: float = 12.0  # scattered only: degrees, rotation in [-max, +max]
     overlap: float = 0.5  # scattered only: 0 = photos barely touch, 1 = heavy overlap
     min_visible: float = 0.5  # scattered only: share of each photo that stays uncovered
+    space_top: float = 0.0  # extra free space above the photos, fraction of short edge
+    space_bottom: float = 0.0  # extra free space below the photos, fraction of short edge
 
 
 @dataclass
@@ -145,12 +153,28 @@ class PhotoItem:
 
 
 @dataclass
+class TextItem:
+    """A title or caption placed on the canvas, drawn above the photos."""
+
+    id: str
+    text: str
+    x: float  # centre, canvas pixels
+    y: float
+    size: float = 60.0  # letter height in style units (1/1000 of the short edge)
+    color: str = "#222222"
+    rotation: float = 0.0  # degrees, counter-clockwise
+    font: str = ""  # path to a TrueType/OpenType font; "" = built-in font
+    shadow: bool = False  # drop shadow behind the text (project shadow, or a soft default)
+
+
+@dataclass
 class Project:
     canvas: Canvas
     photos: list[PhotoItem] = field(default_factory=list)
     layout: LayoutSettings = field(default_factory=LayoutSettings)
     default_style: StyleRef = field(default_factory=StyleRef)
     shadow: Shadow = field(default_factory=Shadow)
+    texts: list[TextItem] = field(default_factory=list)
     seed: int = 0
 
     def style_for(self, item: PhotoItem) -> StyleRef:

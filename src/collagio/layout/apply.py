@@ -101,6 +101,8 @@ def apply_layout(project: Project, size_of: SizeOf = oriented_size) -> None:
             GridSettings(
                 gap=settings.gap * short_edge,
                 margin=settings.margin * short_edge,
+                extra_top=settings.space_top * short_edge,
+                extra_bottom=settings.space_bottom * short_edge,
                 size_variation=settings.size_variation,
                 order=settings.order,
             ),
@@ -114,6 +116,8 @@ def apply_layout(project: Project, size_of: SizeOf = oriented_size) -> None:
             project.canvas.height,
             ScatterSettings(
                 margin=settings.margin * short_edge,
+                extra_top=settings.space_top * short_edge,
+                extra_bottom=settings.space_bottom * short_edge,
                 max_rotation=settings.max_rotation,
                 overlap=settings.overlap,
                 size_variation=settings.size_variation,
