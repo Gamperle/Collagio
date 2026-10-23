@@ -5,7 +5,7 @@ style, adjust anything by hand, and export a print-ready PDF or an image.
 
 ![Polaroids scattered on a cork board](docs/images/scattered-polaroid.jpg)
 
-> **Status:** version 0.1.1. See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** version 0.1.2. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Features
 
