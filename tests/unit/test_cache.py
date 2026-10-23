@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -93,6 +94,69 @@ def test_corrupt_disk_entry_is_regenerated(photo: Path, tmp_path: Path) -> None:
     fresh = ThumbnailCache(directory)
     assert max(fresh.get(photo, 40).size) == 40
     assert (fresh.misses, fresh.disk_hits) == (1, 0)
+
+
+def _fill(directory: Path, sizes: dict[str, int]) -> dict[str, Path]:
+    """Cache files of the given sizes, the first one least recently used."""
+    files = {}
+    for age, (name, size) in enumerate(reversed(sizes.items())):
+        path = directory / name[:2] / f"{name}.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * size)
+        used = time.time() - 100 * (age + 1)
+        os.utime(path, (used, used))
+        files[name] = path
+    return files
+
+
+def test_prune_removes_least_recently_used_first(tmp_path: Path) -> None:
+    cache = ThumbnailCache(tmp_path)
+    files = _fill(tmp_path, {"aa1": 400, "bb2": 300, "cc3": 200, "dd4": 100})
+    assert cache.disk_size() == 1000
+    assert cache.prune(max_bytes=350) == 700
+    assert {name for name, path in files.items() if path.exists()} == {"cc3", "dd4"}
+    assert cache.disk_size() == 300
+    assert cache.prune(max_bytes=350) == 0
+
+
+def test_disk_hit_counts_as_recent_use(photo: Path, tmp_path: Path) -> None:
+    directory = tmp_path / "cache"
+    ThumbnailCache(directory).get(photo, 40)
+    (used,) = directory.rglob("*.png")
+    os.utime(used, (1, 1))
+    _fill(directory, {"ff1": 10})
+    cache = ThumbnailCache(directory)
+    cache.get(photo, 40)
+    assert cache.disk_hits == 1
+    cache.prune(max_bytes=used.stat().st_size)
+    assert used.exists()
+    assert len(list(directory.rglob("*.png"))) == 1
+
+
+def test_prune_removes_stale_temp_files_only(tmp_path: Path) -> None:
+    (tmp_path / "ab").mkdir()
+    stale = tmp_path / "ab" / "ab1.123-4.tmp"
+    fresh = tmp_path / "ab" / "ab2.123-5.tmp"
+    for path in (stale, fresh):
+        path.write_bytes(b"x")
+    old = time.time() - 2 * cache_module.STALE_TEMP_SECONDS
+    os.utime(stale, (old, old))
+    ThumbnailCache(tmp_path).prune()
+    assert not stale.exists()
+    assert fresh.exists()
+
+
+def test_clear_disk_and_cache_without_directory(photo: Path, tmp_path: Path) -> None:
+    cache = ThumbnailCache(tmp_path / "cache")
+    assert cache.disk_size() == 0  # not created yet
+    cache.get(photo, 40)
+    size = cache.disk_size()
+    assert size > 0
+    assert cache.clear_disk() == size
+    assert cache.disk_size() == 0
+    assert ThumbnailCache().prune() == 0
+    with pytest.raises(ValueError, match="negative"):
+        cache.prune(-1)
 
 
 def test_memory_items_must_be_positive() -> None:

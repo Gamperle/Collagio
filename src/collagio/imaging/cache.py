@@ -1,15 +1,19 @@
 """Thumbnail cache: in-memory LRU in front of an optional on-disk PNG cache.
 
 Entries are keyed by absolute path, modification time, file size and the
-requested size, so edited photos are picked up automatically.
+requested size, so edited photos are picked up automatically. The disk cache is
+kept under a size limit by `prune`, which removes the least recently used files
+first (a disk hit refreshes the file's modification time).
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import sys
 import threading
+import time
 from collections import OrderedDict
 from pathlib import Path
 
@@ -17,6 +21,9 @@ from PIL import Image
 
 from collagio.errors import ImageLoadError
 from collagio.imaging.loader import load_image
+
+DEFAULT_DISK_LIMIT = 500 * 1024 * 1024  # bytes
+STALE_TEMP_SECONDS = 3600  # leftovers of interrupted writes
 
 
 def default_cache_dir() -> Path:
@@ -80,6 +87,8 @@ class ThumbnailCache:
             except OSError:  # corrupt cache file: fall through and regenerate
                 disk_path.unlink(missing_ok=True)
             else:
+                with contextlib.suppress(OSError):
+                    os.utime(disk_path)  # recently used: pruned last
                 with self._lock:
                     self.disk_hits += 1
                     self._remember(key, image)
@@ -100,3 +109,53 @@ class ThumbnailCache:
     def clear_memory(self) -> None:
         with self._lock:
             self._memory.clear()
+
+    def disk_size(self) -> int:
+        """Bytes used by the disk cache."""
+        return sum(size for _, _, size in self._disk_files())
+
+    def prune(self, max_bytes: int = DEFAULT_DISK_LIMIT) -> int:
+        """Delete the least recently used disk entries until at most `max_bytes` remain.
+
+        Leftover temporary files of interrupted writes are deleted too. Returns the
+        number of bytes freed.
+        """
+        if max_bytes < 0:
+            raise ValueError("max_bytes must not be negative")
+        now = time.time()
+        files = [
+            (path, used, size)
+            for path, used, size in self._disk_files()
+            # A recent temporary file may still be written by another thread or instance.
+            if path.suffix != ".tmp" or now - used > STALE_TEMP_SECONDS
+        ]
+        excess = sum(size for _, _, size in files) - max_bytes
+        freed = 0
+        for path, _, size in sorted(files, key=lambda entry: entry[1]):
+            if freed >= excess and path.suffix != ".tmp":
+                continue
+            try:
+                path.unlink()
+            except OSError:
+                continue
+            freed += size
+        return freed
+
+    def clear_disk(self) -> int:
+        """Delete the whole disk cache; returns the number of bytes freed."""
+        return self.prune(0)
+
+    def _disk_files(self) -> list[tuple[Path, float, int]]:
+        """Cache files with their last use (modification time) and size."""
+        if self.directory is None or not self.directory.is_dir():
+            return []
+        files = []
+        for path in self.directory.glob("*/*"):
+            if path.suffix not in (".png", ".tmp"):
+                continue
+            try:
+                stat = path.stat()
+            except OSError:  # removed meanwhile
+                continue
+            files.append((path, stat.st_mtime, stat.st_size))
+        return files

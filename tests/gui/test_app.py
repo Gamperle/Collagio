@@ -27,6 +27,7 @@ from collagio.app.workers import ExportJob
 from collagio.core.geometry import centre, photo_at
 from collagio.core.model import LayoutMode, LayoutSettings, PhotoItem, Rect, StyleRef
 from collagio.core.serialize import load_project, save_project
+from collagio.imaging.cache import DEFAULT_DISK_LIMIT, ThumbnailCache
 from collagio.layout.scattered import rotated_corners
 from tests.gui.conftest import click, drag, settle, view_point
 
@@ -112,6 +113,28 @@ def test_list_icon_follows_changes_on_disk(
     window.photo_list.show_project(window.document.project, [])
     settle(window, qtbot)
     assert icon_colour().blue() > 200
+
+
+def test_clear_thumbnail_cache(loaded: MainWindow) -> None:
+    cache = loaded.renderer.cache
+    assert cache.disk_size() > 0
+    loaded.clear_cache_action.trigger()
+    assert cache.disk_size() == 0
+    assert "MB" in loaded.statusBar().currentMessage()
+
+
+def test_cache_is_pruned_on_start(
+    make_window: Callable[[], MainWindow], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    limits: list[int] = []
+
+    def prune(self: ThumbnailCache, max_bytes: int = DEFAULT_DISK_LIMIT) -> int:
+        limits.append(max_bytes)
+        return 0
+
+    monkeypatch.setattr(ThumbnailCache, "prune", prune)
+    make_window().renderer.wait()
+    assert limits == [DEFAULT_DISK_LIMIT]
 
 
 def test_expand_paths(sample_photos: list[Path], tmp_path: Path) -> None:

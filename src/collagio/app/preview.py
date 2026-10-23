@@ -144,6 +144,14 @@ class PreviewRenderer(QObject):
 
         self.pool.start(_Job(work))
 
+    def prune_cache(self) -> None:
+        """Keep the thumbnail disk cache under its size limit, in the background."""
+
+        def work() -> None:
+            self.cache.prune()
+
+        self.pool.start(_Job(work))
+
     def wait(self) -> None:
         """Block until all queued work is done (for tests and shutdown)."""
         self.pool.waitForDone()
