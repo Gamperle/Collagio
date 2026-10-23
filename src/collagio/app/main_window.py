@@ -146,7 +146,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.canvas)
 
         self.photo_list = PhotoListPanel()
-        self.layout_panel = LayoutPanel(self.document)
+        self.layout_panel = LayoutPanel(self.document, self.settings)
         self.style_panel = StylePanel(self.document)
         self.canvas_panel = CanvasPanel(self.document)
         self.text_panel = TextPanel(self.document)

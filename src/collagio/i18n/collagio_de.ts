@@ -301,6 +301,22 @@
         <source>Seed</source>
         <translation>Startwert</translation>
     </message>
+    <message>
+        <source>Replace manual changes?</source>
+        <translation>Manuelle Änderungen ersetzen?</translation>
+    </message>
+    <message>
+        <source>The new layout replaces the photos you moved, resized, rotated, swapped or cropped by hand. Undo brings them back.</source>
+        <translation>Das neue Layout ersetzt die Fotos, die Sie von Hand verschoben, skaliert, gedreht, getauscht oder zugeschnitten haben. Mit Rückgängig holen Sie sie zurück.</translation>
+    </message>
+    <message>
+        <source>Replace</source>
+        <translation>Ersetzen</translation>
+    </message>
+    <message>
+        <source>Don't ask again</source>
+        <translation>Nicht mehr fragen</translation>
+    </message>
 </context>
 <context>
     <name>MainWindow</name>

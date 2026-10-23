@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from pypdf import PdfReader
-from PySide6.QtCore import QMimeData, QPoint, QPointF, QSettings, Qt, QUrl
+from PySide6.QtCore import QMimeData, QPoint, QPointF, QSettings, Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDropEvent, QWheelEvent
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 from pytestqt.qtbot import QtBot
 
 from collagio import __version__
@@ -408,6 +408,51 @@ def test_layout_panel_apply_and_shuffle(loaded: MainWindow) -> None:
     seed = loaded.document.project.seed
     panel.shuffle_button.click()
     assert loaded.document.project.seed != seed or loaded.undo_action.text() == "&Undo New layout"
+
+
+def test_apply_layout_asks_only_when_manual_edits_would_be_lost(loaded: MainWindow) -> None:
+    panel = loaded.layout_panel
+    answers: list[tuple[bool, bool]] = []
+    asked: list[int] = []
+
+    def ask() -> tuple[bool, bool]:
+        asked.append(1)
+        return answers.pop(0)
+
+    panel.ask_replace = ask  # type: ignore[method-assign]
+    panel.apply_button.click()  # automatic layout: nothing to lose
+    assert asked == []
+    assert loaded.undo_action.text() == "&Undo New layout"
+
+    photo = _photo(loaded, "p001")
+    assert photo.rect is not None
+    loaded.document.move_photo("p001", photo.rect, 15.0, "Rotate photo")
+    seed = panel.seed.value()
+    answers.append((False, False))
+    panel.shuffle_button.click()  # cancelled: nothing changes
+    assert asked == [1]
+    assert _photo(loaded, "p001").rotation == 15.0
+    assert panel.seed.value() == seed
+    assert loaded.undo_action.text() == "&Undo Rotate photo"
+
+    answers.append((True, True))
+    panel.apply_button.click()  # replaced, and don't ask again
+    assert _photo(loaded, "p001").rotation == 0.0
+    loaded.document.move_photo("p001", photo.rect, 15.0, "Rotate photo")
+    panel.apply_button.click()
+    assert asked == [1, 1]
+    assert _photo(loaded, "p001").rotation == 0.0
+
+
+def test_replace_question_dialog(loaded: MainWindow) -> None:
+    def answer() -> None:
+        box = QApplication.activeModalWidget()
+        assert isinstance(box, QMessageBox)
+        box.checkBox().setChecked(True)
+        box.button(QMessageBox.StandardButton.Yes).click()
+
+    QTimer.singleShot(0, answer)
+    assert loaded.layout_panel.ask_replace() == (True, True)
 
 
 def test_layout_panel_reports_errors(loaded: MainWindow, errors: list[str]) -> None:
