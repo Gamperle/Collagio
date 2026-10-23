@@ -481,6 +481,18 @@
         <translation>Fotos hinzufügen</translation>
     </message>
     <message>
+        <source>Recover unsaved work</source>
+        <translation>Ungespeicherte Arbeit wiederherstellen</translation>
+    </message>
+    <message>
+        <source>Unsaved work was found from several sessions. Which one should be opened?</source>
+        <translation>Es wurde ungespeicherte Arbeit aus mehreren Sitzungen gefunden. Welche soll geöffnet werden?</translation>
+    </message>
+    <message>
+        <source>Last saved {}</source>
+        <translation>Zuletzt gesichert {}</translation>
+    </message>
+    <message>
         <source>Thumbnail cache cleared ({} MB freed)</source>
         <translation>Vorschaubild-Cache geleert ({} MB freigegeben)</translation>
     </message>

@@ -55,8 +55,8 @@ uv run collagio-gui      # optionally followed by photos, folders or a .collagio
   and blurred-photo backgrounds, and shows the size in mm.
 - **File > Export image** renders the full-resolution PNG, JPEG or PDF in the background
   (cancellable); the options ask for quality, bleed and, for PDF, crop marks.
-  Unsaved work is autosaved every two minutes; *File > Recover unsaved work* brings it back
-  after a crash.
+  Unsaved work is autosaved every two minutes (each window separately); *File > Recover
+  unsaved work* brings it back after a crash.
 
 ## Command-line usage
 

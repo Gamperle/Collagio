@@ -24,6 +24,7 @@ from collagio.app.main_window import (
     expand_paths,
 )
 from collagio.app.workers import ExportJob
+from collagio.core.document import Document, autosave_name
 from collagio.core.geometry import centre, photo_at
 from collagio.core.model import LayoutMode, LayoutSettings, PhotoItem, Rect, StyleRef
 from collagio.core.serialize import load_project, save_project
@@ -538,6 +539,55 @@ def test_autosave_and_recover(loaded: MainWindow, errors: list[str]) -> None:
     assert loaded.recover()
     assert loaded.document.project == photos
     assert loaded.document.modified
+
+
+def test_two_instances_autosave_and_recover_independently(
+    make_window: Callable[[], MainWindow], sample_photos: list[Path]
+) -> None:
+    first, second = make_window(), make_window()
+    first.add_photos([str(p) for p in sample_photos[:2]])
+    second.add_photos([str(p) for p in sample_photos[2:5]])
+    first.autosave()
+    second.autosave()
+    assert first.autosave_path != second.autosave_path
+    assert first.recoverable() == [first.autosave_path]  # the other window is still running
+    expected = second.document.project
+
+    assert first.close()
+    assert not first.autosave_path.exists()
+    assert second.autosave_path.exists()  # not touched by the other window
+
+    second._session_lock.unlock()  # as if the second instance had crashed
+    third = make_window()
+    assert third.recoverable() == [second.autosave_path]
+    assert third.recover()
+    assert third.document.project == expected
+    assert third.autosave_path.exists()  # adopted: deleted when this window closes
+    assert not second.autosave_path.exists()
+
+
+def test_recover_asks_which_session(
+    make_window: Callable[[], MainWindow], sample_photos: list[Path], tmp_path: Path
+) -> None:
+    window = make_window()
+    for session, count in (("aaa", 2), ("bbb", 3)):
+        project = Document()
+        project.add_photos([str(p) for p in sample_photos[:count]])
+        project.autosave(tmp_path / "cache" / autosave_name(session))
+    offered: list[list[Path]] = []
+
+    def choose(files: list[Path]) -> Path | None:
+        offered.append(files)
+        return files[-1] if len(offered) == 1 else None
+
+    window.choose_recovery = choose  # type: ignore[method-assign]
+    assert window.recover()
+    assert len(offered[0]) == 2
+    count = len(window.document.project.photos)
+    assert count in (2, 3)
+    assert window._recovery_label(window.autosave_path).startswith("Last saved")
+    assert not window.recover()  # cancelled
+    assert len(window.document.project.photos) == count
 
 
 def test_recover_without_autosave(window: MainWindow, errors: list[str]) -> None:

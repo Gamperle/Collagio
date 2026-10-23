@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QThreadPool, QTimer, QTranslator
+from PySide6.QtCore import (
+    QDateTime,
+    QLocale,
+    QLockFile,
+    QSettings,
+    Qt,
+    QThreadPool,
+    QTimer,
+    QTranslator,
+)
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -16,6 +28,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QInputDialog,
     QMainWindow,
     QMessageBox,
     QProgressDialog,
@@ -31,7 +44,13 @@ from collagio.app.panels import CanvasPanel, LayoutPanel, PhotoListPanel, StyleP
 from collagio.app.preview import PreviewRenderer
 from collagio.app.strings import command_label, export_filter, image_filter, project_filter
 from collagio.app.workers import ExportJob
-from collagio.core.document import AUTOSAVE_NAME, Document
+from collagio.core.document import (
+    AUTOSAVE_PREFIX,
+    Document,
+    autosave_files,
+    autosave_name,
+    remove_old_autosaves,
+)
 from collagio.core.serialize import load_project
 from collagio.errors import CollagioError
 from collagio.imaging.cache import ThumbnailCache, default_cache_dir
@@ -142,6 +161,13 @@ class MainWindow(QMainWindow):
 
         self._create_actions()
         self._connect()
+        # Each window autosaves to its own file; the lock tells other instances it is in use.
+        self.session = uuid.uuid4().hex[:12]
+        self._session_lock = QLockFile(str(self._lock_path(self.session)))
+        with contextlib.suppress(OSError):
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            remove_old_autosaves(self.cache_dir)
+        self._session_lock.tryLock(0)
         self.autosave_timer = QTimer(self)
         self.autosave_timer.setInterval(AUTOSAVE_INTERVAL_MS)
         self.autosave_timer.timeout.connect(self.autosave)
@@ -499,7 +525,46 @@ class MainWindow(QMainWindow):
 
     @property
     def autosave_path(self) -> Path:
-        return self.cache_dir / AUTOSAVE_NAME
+        return self.cache_dir / autosave_name(self.session)
+
+    def _lock_path(self, session: str) -> Path:
+        return self.cache_dir / f"{AUTOSAVE_PREFIX}{session}.lock"
+
+    def _in_use(self, autosave: Path) -> bool:
+        """True if the recovery copy belongs to another running window."""
+        if autosave == self.autosave_path or not autosave.name.startswith(AUTOSAVE_PREFIX):
+            return False
+        session = autosave.stem.removeprefix(AUTOSAVE_PREFIX)
+        lock = QLockFile(str(self._lock_path(session)))
+        if not lock.tryLock(0):
+            return True
+        lock.unlock()  # left over from a crash; removes the lock file
+        return False
+
+    def recoverable(self) -> list[Path]:
+        """Recovery copies of this window and of instances that did not close cleanly."""
+        try:
+            return [path for path in autosave_files(self.cache_dir) if not self._in_use(path)]
+        except OSError:
+            return []
+
+    def choose_recovery(self, files: list[Path]) -> Path | None:
+        """Ask which of several recovery copies to open."""
+        labels = [self._recovery_label(path) for path in files]
+        label, ok = QInputDialog.getItem(
+            self,
+            self.tr("Recover unsaved work"),
+            self.tr("Unsaved work was found from several sessions. Which one should be opened?"),
+            labels,
+            0,
+            False,
+        )
+        return files[labels.index(label)] if ok else None
+
+    def _recovery_label(self, path: Path) -> str:
+        changed = QDateTime.fromSecsSinceEpoch(int(path.stat().st_mtime))
+        when = QLocale().toString(changed, QLocale.FormatType.ShortFormat)
+        return self.tr("Last saved {}").format(when)
 
     def clear_thumbnail_cache(self) -> None:
         self.renderer.wait()  # no preview is being written meanwhile
@@ -511,18 +576,23 @@ class MainWindow(QMainWindow):
 
     def autosave(self) -> None:
         try:
-            self.document.autosave(self.cache_dir)
+            self.document.autosave(self.autosave_path)
         except OSError as exc:
             self.statusBar().showMessage(self.tr("Autosave failed: {}").format(exc), 5000)
 
     def recover(self) -> bool:
-        if not self.autosave_path.exists():
+        files = self.recoverable()
+        if not files:
             self.show_error(self.tr("There is no unsaved work to recover."))
             return False
-        if not self.confirm_discard():
+        chosen = files[0] if len(files) == 1 else self.choose_recovery(files)
+        if chosen is None or not self.confirm_discard():
             return False
         try:
-            document = Document(load_project(self.autosave_path))
+            document = Document(load_project(chosen))
+            if chosen != self.autosave_path:
+                # This window now owns the copy and deletes it when closed cleanly.
+                os.replace(chosen, self.autosave_path)
         except (CollagioError, OSError) as exc:
             self.show_error(str(exc))
             return False
@@ -619,6 +689,7 @@ class MainWindow(QMainWindow):
             return
         self.autosave_timer.stop()
         self.autosave_path.unlink(missing_ok=True)  # closed cleanly: nothing to recover
+        self._session_lock.unlock()
         if self.export_job is not None:
             self.export_job.cancel()
         self.export_pool.waitForDone()

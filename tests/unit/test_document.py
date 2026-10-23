@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 import pytest
 
-from collagio.core.document import AUTOSAVE_NAME, Document, new_project
+from collagio.core.document import (
+    LEGACY_AUTOSAVE_NAME,
+    Document,
+    autosave_files,
+    autosave_name,
+    new_project,
+    remove_old_autosaves,
+)
 from collagio.core.model import (
     Background,
     Canvas,
@@ -201,12 +210,32 @@ def test_save_without_path() -> None:
 
 def test_autosave(tmp_path: Path) -> None:
     doc = Document(size_of=size_of)
-    assert doc.autosave(tmp_path / "auto") is None  # nothing to save
+    target = tmp_path / "auto" / autosave_name("s1")
+    assert doc.autosave(target) is None  # nothing to save
     doc.add_photos(["land.jpg", "port.jpg"])
-    target = doc.autosave(tmp_path / "auto")
-    assert target == tmp_path / "auto" / AUTOSAVE_NAME
+    assert doc.autosave(target) == target
     assert load_project(target).photos[0].path.endswith("land.jpg")
     assert doc.modified  # autosave does not count as saving
+    doc.save(tmp_path / "saved.collagio")
+    assert doc.autosave(target) is None
+    assert not target.exists()  # saved: nothing left to recover
+
+
+def test_autosave_files_and_old_ones_removed(tmp_path: Path) -> None:
+    assert autosave_files(tmp_path / "none") == []
+    now = time.time()
+    ages = {autosave_name("old"): 40, LEGACY_AUTOSAVE_NAME: 2, autosave_name("new"): 1}
+    for name, days in ages.items():
+        (tmp_path / name).write_text("{}")
+        os.utime(tmp_path / name, (now - days * 86400, now - days * 86400))
+    (tmp_path / "other.collagio").write_text("{}")
+    assert [p.name for p in autosave_files(tmp_path)] == [
+        autosave_name("new"),
+        LEGACY_AUTOSAVE_NAME,
+        autosave_name("old"),
+    ]
+    assert remove_old_autosaves(tmp_path) == [tmp_path / autosave_name("old")]
+    assert len(autosave_files(tmp_path)) == 2
 
 
 def test_listeners_are_notified() -> None:
