@@ -1,0 +1,1 @@
+"""Collagio cli package."""

@@ -1,0 +1,1 @@
+"""Collagio app package."""
