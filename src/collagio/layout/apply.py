@@ -70,7 +70,8 @@ def framed_aspect(
 def apply_layout(project: Project, size_of: SizeOf = oriented_size) -> None:
     """Place every photo according to the project's layout settings and seed.
 
-    Manual changes (position, rotation, crop) are replaced; styles are kept.
+    Manual changes (position, rotation, crop) are replaced and `layout_edited` is
+    cleared; styles are kept.
     A single photo is allowed here (an editor may hold one while photos are being
     added); finished collages need MIN_PHOTOS, see `build_project`.
     """
@@ -135,6 +136,7 @@ def apply_layout(project: Project, size_of: SizeOf = oriented_size) -> None:
         item.rotation = placement.rotation
         item.crop = None
         item.z = placement.z
+    project.layout_edited = False
 
 
 def build_project(

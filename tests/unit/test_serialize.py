@@ -136,6 +136,13 @@ def test_missing_optional_fields_get_defaults() -> None:
     assert project.shadow == Shadow()
     assert project.photos == [PhotoItem(id="a", path="a.jpg")]
     assert project.seed == 0
+    assert project.layout_edited  # unknown: protect possible manual changes
+
+
+@pytest.mark.parametrize("edited", [True, False])
+def test_layout_edited_round_trips(edited: bool) -> None:
+    project = Project(canvas=Canvas(10, 10), layout_edited=edited)
+    assert project_from_dict(project_to_dict(project)).layout_edited is edited
 
 
 def _valid() -> dict[str, Any]:

@@ -176,6 +176,9 @@ class Project:
     shadow: Shadow = field(default_factory=Shadow)
     texts: list[TextItem] = field(default_factory=list)
     seed: int = 0
+    # Photos were moved, resized, rotated, swapped, cropped or restacked by hand since
+    # the last automatic layout; a new layout would replace those changes.
+    layout_edited: bool = False
 
     def style_for(self, item: PhotoItem) -> StyleRef:
         return item.style if item.style is not None else self.default_style

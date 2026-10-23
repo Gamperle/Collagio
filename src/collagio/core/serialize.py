@@ -87,6 +87,7 @@ def project_to_dict(project: Project, base_dir: Path | None = None) -> dict[str,
         "app": "collagio",
         "schema_version": SCHEMA_VERSION,
         "seed": project.seed,
+        "layout_edited": project.layout_edited,
         "canvas": {
             "width": project.canvas.width,
             "height": project.canvas.height,
@@ -261,6 +262,8 @@ def project_from_dict(data: Any, base_dir: Path | None = None) -> Project:
             shadow=shadow,
             texts=texts,
             seed=int(data.get("seed", 0)),
+            # Unknown in files from 0.1.0: assume edits, so nothing is replaced unasked.
+            layout_edited=bool(data.get("layout_edited", True)),
         )
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise ProjectFormatError(f"invalid project file: {exc!r}") from exc
