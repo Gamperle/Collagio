@@ -312,6 +312,30 @@ def test_resize_with_corner_handle(loaded: MainWindow, qtbot: QtBot) -> None:
     assert loaded.undo_action.text() == "&Undo Resize photo"
 
 
+def _drawn_rect(window: MainWindow, photo_id: str) -> tuple[float, float, float, float]:
+    bounds = window.canvas.photo_items[photo_id].sceneBoundingRect()
+    return bounds.x(), bounds.y(), bounds.width(), bounds.height()
+
+
+def test_tile_stays_on_its_photo_after_resize(loaded: MainWindow, qtbot: QtBot) -> None:
+    """The live preview of a resize must not leave the tile shifted (grid, no rotation)."""
+    loaded.canvas.select(["p002"])
+    original = _rect(loaded, "p002")
+    corner = (original.right, original.bottom)
+    drag(loaded, corner, (corner[0] - 60, corner[1] - 60 / original.aspect))
+    settle(loaded, qtbot)
+    for photo_id in ("p002", "p001"):
+        rect = _rect(loaded, photo_id)
+        expected = (rect.x, rect.y, rect.width, rect.height)
+        assert _drawn_rect(loaded, photo_id) == pytest.approx(expected, abs=2)
+    loaded.undo_action.trigger()
+    settle(loaded, qtbot)
+    rect = _rect(loaded, "p002")
+    assert _drawn_rect(loaded, "p002") == pytest.approx(
+        (rect.x, rect.y, rect.width, rect.height), abs=2
+    )
+
+
 def test_rotate_with_handle(loaded: MainWindow, qtbot: QtBot) -> None:
     _scattered(loaded, qtbot)
     loaded.canvas.select(["p003"])

@@ -4,6 +4,7 @@
 
 - Fixed: the film strip's sprocket holes are drawn smoothly and evenly at any size, and
   rotated photos (scattered layout) have anti-aliased edges in every style
+- Fixed: after resizing a photo in the editor, it was sometimes drawn shifted away from its selection frame
 
 ## 0.1.1 – 2026-10-23
 
