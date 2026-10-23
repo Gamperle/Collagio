@@ -221,7 +221,7 @@ Order: postage stamp → cut-out → torn → Polaroid → tape/corners → film
 - *golden*: rasterised PDF (via `pypdfium2`) compared to PNG export of the same
   project.
 
-### Phase 6 – Localisation, packaging, release (M6, ≈1–2 weeks) – ✅ done (0.1.0 released)
+### Phase 6 – Localisation, packaging, release (M6, ≈1–2 weeks) – ✅ done (0.1.0 released, 0.1.1 bug fixes)
 - All UI strings via `self.tr()`; `pyside6-lupdate` → `de.ts`; translate; `.qm` built in CI
 - PyInstaller one-folder build; Inno Setup installer for Windows
 - AppImage (appimage-builder) and Flatpak manifest (KDE runtime with PySide6)
