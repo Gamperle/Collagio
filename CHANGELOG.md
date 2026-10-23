@@ -7,6 +7,7 @@
 - Fixed: photo list icons are refreshed when a photo is changed on disk (#5)
 - Fixed: the thumbnail disk cache is kept under 500 MB (least recently used previews are removed at start-up); *View > Clear thumbnail cache* empties it (#6)
 - Fixed: opening a project with many missing photos shows one summary message instead of one per photo; missing photos are shown as placeholders (#4)
+- Fixed: several editor windows no longer overwrite each other's autosave; *Recover unsaved work* lets you choose between sessions, and copies older than 30 days are removed (#3)
 
 ## 0.1.0 – 2026-10-23
 

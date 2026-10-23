@@ -7,6 +7,7 @@ only translates user actions into these calls and listens for changes.
 from __future__ import annotations
 
 import copy
+import time
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
@@ -46,8 +47,39 @@ from collagio.render.text import text_size
 
 Listener = Callable[[], None]
 
-AUTOSAVE_NAME = f"autosave{PROJECT_SUFFIX}"
+AUTOSAVE_PREFIX = "autosave-"
+LEGACY_AUTOSAVE_NAME = f"autosave{PROJECT_SUFFIX}"  # one file for all windows (0.1.0)
+AUTOSAVE_MAX_AGE_DAYS = 30
 DEFAULT_CANVAS = (2480, 3508)  # A4 portrait at 300 DPI
+
+
+def autosave_name(session: str) -> str:
+    """File name of the recovery copy of one editor session (one per window)."""
+    return f"{AUTOSAVE_PREFIX}{session}{PROJECT_SUFFIX}"
+
+
+def autosave_files(directory: Path) -> list[Path]:
+    """Recovery copies in `directory`, the most recent first."""
+    if not directory.is_dir():
+        return []
+    files = [*directory.glob(f"{AUTOSAVE_PREFIX}*{PROJECT_SUFFIX}")]
+    legacy = directory / LEGACY_AUTOSAVE_NAME
+    if legacy.is_file():
+        files.append(legacy)
+    return sorted(files, key=lambda path: path.stat().st_mtime, reverse=True)
+
+
+def remove_old_autosaves(
+    directory: Path, max_age_days: float = AUTOSAVE_MAX_AGE_DAYS
+) -> list[Path]:
+    """Delete recovery copies not written for `max_age_days`; returns the deleted files."""
+    limit = time.time() - max_age_days * 24 * 3600
+    removed = []
+    for path in autosave_files(directory):
+        if path.stat().st_mtime < limit:
+            path.unlink(missing_ok=True)
+            removed.append(path)
+    return removed
 
 
 def new_project() -> Project:
@@ -86,12 +118,16 @@ class Document:
         self.undo_stack.set_clean()
         return target
 
-    def autosave(self, directory: Path) -> Path | None:
-        """Save a recovery copy if there are unsaved changes; returns its path."""
+    def autosave(self, target: Path) -> Path | None:
+        """Save a recovery copy if there are unsaved changes; returns its path.
+
+        Without unsaved changes an earlier copy at `target` is deleted, so only
+        work that would otherwise be lost can be recovered.
+        """
         if not self.modified:
+            target.unlink(missing_ok=True)
             return None
-        directory.mkdir(parents=True, exist_ok=True)
-        target = directory / AUTOSAVE_NAME
+        target.parent.mkdir(parents=True, exist_ok=True)
         save_project(self.project, target)
         return target
 
