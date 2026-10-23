@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from collagio.core.model import CropBox, PhotoItem, Project, Rect, StyleRef
 from collagio.errors import EditError
@@ -22,6 +22,15 @@ class Command(Protocol):
     def apply(self, project: Project) -> None: ...
 
     def revert(self, project: Project) -> None: ...
+
+
+@runtime_checkable
+class MergeableCommand(Command, Protocol):
+    """A command that can absorb the command applied right after it (one undo step)."""
+
+    def merge_with(self, other: Command) -> bool:
+        """Take over `other`'s result if both belong together; False leaves self unchanged."""
+        ...
 
 
 def find_photo(project: Project, photo_id: str) -> PhotoItem:
@@ -177,6 +186,13 @@ class SetCrop:
             raise EditError("crop was not applied")
         find_photo(project, self.photo_id).crop = self._before[0]
         self._before = []
+
+    def merge_with(self, other: Command) -> bool:
+        """Successive crops of the same photo (e.g. one zoom gesture) undo together."""
+        if not isinstance(other, SetCrop) or other.photo_id != self.photo_id:
+            return False
+        self.crop = copy.deepcopy(other.crop)
+        return True
 
 
 @dataclass

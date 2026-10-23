@@ -255,6 +255,21 @@ def test_ctrl_wheel_zooms_crop_and_reset(loaded: MainWindow) -> None:
     assert _photo(loaded, "p003").crop is None
 
 
+def test_continuous_ctrl_wheel_zoom_is_one_undo_step(loaded: MainWindow) -> None:
+    point = _visible_point(loaded, "p003")
+    position = QPointF(view_point(loaded, *point))
+    for _ in range(5):
+        event = QWheelEvent(
+            position, QPointF(loaded.canvas.viewport().mapToGlobal(position.toPoint())),
+            QPoint(0, 0), QPoint(0, 120), Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.ControlModifier, Qt.ScrollPhase.NoScrollPhase, False,
+        )  # fmt: skip
+        QApplication.sendEvent(loaded.canvas.viewport(), event)
+    assert _photo(loaded, "p003").crop is not None
+    loaded.undo_action.trigger()
+    assert _photo(loaded, "p003").crop is None
+
+
 def test_wheel_zooms_view_and_fit(loaded: MainWindow) -> None:
     before = loaded.canvas.transform().m11()
     loaded.zoom_in_action.trigger()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from collagio.core.commands import Command
+from collagio.core.commands import Command, MergeableCommand
 from collagio.core.model import Project
 
 Listener = Callable[[], None]
@@ -34,9 +34,24 @@ class UndoStack:
         for listener in self._listeners:
             listener()
 
-    def push(self, command: Command) -> None:
-        """Apply `command` and record it. Clears the redo history."""
+    def push(self, command: Command, merge: bool = False) -> None:
+        """Apply `command` and record it. Clears the redo history.
+
+        With `merge`, the command is folded into the previous one if that one
+        accepts it (see `MergeableCommand`), so both are undone in one step. A
+        command is never merged into the saved state or across an undo.
+        """
         command.apply(self.project)
+        top = self._done[-1] if self._done else None
+        if (
+            merge
+            and isinstance(top, MergeableCommand)
+            and not self._undone
+            and self._clean_index != len(self._done)
+            and top.merge_with(command)
+        ):
+            self._notify()
+            return
         self._done.append(command)
         if self._clean_index is not None and self._clean_index > len(self._done) - 1:
             self._clean_index = None  # the clean state was in the discarded redo history
