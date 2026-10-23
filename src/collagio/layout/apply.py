@@ -45,6 +45,7 @@ def framed_aspect(
     ctx = StyleContext(
         unit=project.canvas.short_edge / STYLE_UNITS_PER_SHORT_EDGE,
         seed=derive_seed(project.seed, "style", item.id),
+        photo_aspect=photo_aspect,
     )
     a = photo_aspect
     tile_w, tile_h = math.sqrt(tile_area * a), math.sqrt(tile_area / a)

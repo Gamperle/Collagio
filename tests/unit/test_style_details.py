@@ -284,6 +284,24 @@ def test_filmstrip_orientation(size: tuple[int, int], horizontal: bool) -> None:
         assert alpha(tile, round((left + right) / 2), round((top + bottom) / 2)) == 0
 
 
+@pytest.mark.parametrize(
+    ("photo_aspect", "horizontal"), [(1.0, True), (0.995, True), (1.5, True), (0.8, False)]
+)
+def test_filmstrip_auto_orientation_follows_the_photo(
+    photo_aspect: float, horizontal: bool
+) -> None:
+    style = FilmstripStyle()
+    params = style.resolve({})
+    context = StyleContext(unit=1.0, seed=0, photo_aspect=photo_aspect)
+    size = (400, 300) if not horizontal else (300, 400)  # the tile's shape would say otherwise
+    x, y, w, h = style.content_box(size, params, context)
+    assert (y > x) == horizontal
+    content = Image.new("RGB", (w, h), RED)
+    tile = style.render(content, size, params, context)
+    for left, top, right, bottom in style.holes(size, params, photo_aspect):
+        assert alpha(tile, round((left + right) / 2), round((top + bottom) / 2)) == 0
+
+
 def test_filmstrip_band_range() -> None:
     with pytest.raises(StyleError, match=r"between 0\.05 and 0\.3"):
         get_style("filmstrip").resolve({"band": 0.5})

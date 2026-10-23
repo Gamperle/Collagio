@@ -80,13 +80,18 @@ def add_shadow(
     return result, (-pad, -pad)
 
 
-def content_aspect(project: Project, item: PhotoItem) -> float:
-    """Aspect ratio of the area the photo's style leaves for the photo itself."""
+def content_aspect(project: Project, item: PhotoItem, photo_aspect: float | None = None) -> float:
+    """Aspect ratio of the area the photo's style leaves for the photo itself.
+
+    Pass the photo's own aspect ratio: some styles (film strip) depend on it.
+    """
     _, _, width, height = _pixel_box(item, 1.0)
     style_ref = project.style_for(item)
     style = get_style(style_ref.name)
     ctx = StyleContext(
-        unit=style_unit(project, 1.0), seed=derive_seed(project.seed, "style", item.id)
+        unit=style_unit(project, 1.0),
+        seed=derive_seed(project.seed, "style", item.id),
+        photo_aspect=photo_aspect,
     )
     _, _, content_w, content_h = style.content_box(
         (width, height), style.resolve(style_ref.params), ctx
@@ -102,13 +107,14 @@ def render_item(
     style_ref = project.style_for(item)
     style = get_style(style_ref.name)
     params = style.resolve(style_ref.params)
+    source = loader(item.path)
     ctx = StyleContext(
         unit=style_unit(project, scale),
         seed=derive_seed(project.seed, "style", item.id),
+        photo_aspect=source.width / source.height,
     )
 
     _, _, content_w, content_h = style.content_box((width, height), params, ctx)
-    source = loader(item.path)
     crop = item.crop or fill_crop(source.size, content_w / content_h)
     content = source.resize(
         (content_w, content_h),

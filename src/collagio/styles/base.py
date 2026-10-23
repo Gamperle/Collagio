@@ -40,6 +40,7 @@ STYLE_UNITS_PER_SHORT_EDGE = 1000
 class StyleContext:
     unit: float  # pixels per style unit
     seed: int
+    photo_aspect: float | None = None  # width / height of the (upright) photo, if known
 
     def px(self, units: float) -> int:
         return round(units * self.unit)
