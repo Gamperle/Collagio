@@ -23,6 +23,7 @@ from collagio.core.model import (
     LayoutMode,
     LayoutSettings,
     PhotoItem,
+    PlacementOrder,
     Project,
     Rect,
     StyleRef,
@@ -90,6 +91,7 @@ def project_to_dict(project: Project, base_dir: Path | None = None) -> dict[str,
             "gap": project.layout.gap,
             "margin": project.layout.margin,
             "size_variation": project.layout.size_variation,
+            "order": project.layout.order.value,
         },
         "default_style": _style_to_dict(project.default_style),
         "photos": [
@@ -168,6 +170,7 @@ def project_from_dict(data: Any, base_dir: Path | None = None) -> Project:
             gap=float(layout_data.get("gap", layout_defaults.gap)),
             margin=float(layout_data.get("margin", layout_defaults.margin)),
             size_variation=float(layout_data.get("size_variation", layout_defaults.size_variation)),
+            order=PlacementOrder(layout_data.get("order", layout_defaults.order)),
         )
         default_style = (
             _style_from_dict(data["default_style"]) if "default_style" in data else StyleRef()

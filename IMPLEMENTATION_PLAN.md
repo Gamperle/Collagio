@@ -190,7 +190,7 @@ Order: postage stamp → cut-out → torn → Polaroid → tape/corners → film
 2. `canvas_view.py`: `QGraphicsScene` showing preview-scale renders; selection,
    move, resize/rotate handles, pan/zoom-in-frame (grid mode)
 3. All edits via `core/commands.py` → `UndoStack` (bridged to `QUndoStack` or own)
-4. Drag & drop import; drag-to-swap in grid
+4. Drag & drop import; drag-to-swap in grid (uses the existing `SwapPhotos` command)
 5. Save/Open project, recent files, autosave
 6. Background workers for thumbnails and export, with progress and cancel
 

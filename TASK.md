@@ -44,7 +44,8 @@ manually, and exports a finished image or print-ready PDF.
 - Automatic layout generation for N photos, taking photo aspect ratios into account
 - Adjustable gap, outer margin, corner radius
 - Smart cropping (keep image centre / faces visible), manual pan/zoom per cell
-- Swap photos by drag & drop; manually merge/split cells
+- Photo placement order: by shape (least cropping, default), random (seeded) or input order
+- Swap photos by drag & drop (CLI: `--swap A,B`); manually merge/split cells
 
 ### 4.2 Rotated and overlapping images ("scattered" mode)
 - Photos placed with random rotation (configurable max angle, e.g. ±15°)

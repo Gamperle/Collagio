@@ -50,6 +50,7 @@ def apply_layout(project: Project, size_of: SizeOf = oriented_size) -> None:
                 gap=settings.gap * short_edge,
                 margin=settings.margin * short_edge,
                 size_variation=settings.size_variation,
+                order=settings.order,
             ),
             derive_rng(project.seed, "layout", settings.mode.value),
         )

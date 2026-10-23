@@ -35,6 +35,10 @@ collagio --help                                     # all options
   `--orientation portrait|landscape`
 - **Layout:** `--gap` and `--margin` as a fraction of the canvas short edge,
   `--size-variation 0..1`, `--seed` for a reproducible layout (a random seed is printed)
+- **Photo placement:** `--order shape` (default: photos go into cells of matching shape,
+  least cropping), `random` (shuffled by the seed) or `input` (given order from the top-left);
+  `--swap 1,4` exchanges two photos afterwards (by number in input order or by id such as
+  `p004`, repeatable, also works with `--project`)
 - **Style:** `--border`, `--corner-radius` in 1/1000 of the canvas short edge, `--border-color`
 - **Background:** one colour, or two comma-separated colours for a gradient
 

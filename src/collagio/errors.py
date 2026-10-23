@@ -31,3 +31,7 @@ class RenderError(CollagioError):
 
 class ExportError(CollagioError):
     """The output file cannot be written in the requested format."""
+
+
+class EditError(CollagioError):
+    """An edit refers to photos that do not exist or cannot be applied."""

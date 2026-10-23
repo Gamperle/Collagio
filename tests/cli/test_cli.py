@@ -52,6 +52,10 @@ def test_help_lists_presets_and_styles(capsys: pytest.CaptureFixture[str]) -> No
         (["-i", "a", "-o", "x.png", "--style", "nope"], "invalid choice"),
         (["-i", "a", "-o", "x.png", "--mode", "spiral"], "invalid choice"),
         (["-o", "x.png", "--bogus"], "unrecognized arguments"),
+        (["-i", "a", "-o", "x.png", "--order", "size"], "invalid choice"),
+        (["-i", "a", "-o", "x.png", "--swap", "1"], "two photos separated by a comma"),
+        (["-i", "a", "-o", "x.png", "--swap", "1,"], "two photos separated by a comma"),
+        (["-p", "p.json", "-o", "x.png", "--order", "input"], "--order only applies"),
     ],
 )
 def test_usage_errors_exit_with_2(
@@ -174,13 +178,14 @@ def test_style_and_background_options_are_saved(
         capsys, "-i", str(photo_dir), "-o", str(tmp_path / "x.png"), "--size", "400x300",
         "--seed", "3", "--gap", "0.02", "--margin", "0.05", "--size-variation", "0.8",
         "--border", "10", "--border-color", "#eeeeee", "--corner-radius", "6",
-        "--background", "#000000,#ffffff", "--save-project", str(project_path),
+        "--background", "#000000,#ffffff", "--order", "random",
+        "--save-project", str(project_path),
     )  # fmt: skip
     assert code == 0
     document = json.loads(project_path.read_text())
     assert document["seed"] == 3
     assert document["layout"] == {
-        "mode": "grid", "gap": 0.02, "margin": 0.05, "size_variation": 0.8,
+        "mode": "grid", "gap": 0.02, "margin": 0.05, "size_variation": 0.8, "order": "random",
     }  # fmt: skip
     assert document["default_style"] == {
         "name": "plain",
@@ -219,3 +224,83 @@ def test_module_runs_as_subprocess() -> None:
     )
     assert result.returncode == 0
     assert collagio.__version__ in result.stdout
+
+
+# --- photo order and manual swaps -------------------------------------------------------
+
+
+def _layout(project_path: Path) -> dict[str, list[float]]:
+    return {p["id"]: p["rect"] for p in json.loads(project_path.read_text())["photos"]}
+
+
+def _create(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path, *extra: str
+) -> Path:
+    tmp_path.mkdir(exist_ok=True)
+    project = tmp_path / "p.collagio.json"
+    code, _, err = _run(
+        capsys, "-i", str(photo_dir), "-o", str(tmp_path / "x.png"), "--size", "400x300",
+        "--seed", "8", "--save-project", str(project), *extra,
+    )  # fmt: skip
+    assert code == 0, err
+    return project
+
+
+@pytest.mark.parametrize("order", ["shape", "random", "input"])
+def test_order_option(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path, order: str
+) -> None:
+    project = _create(capsys, photo_dir, tmp_path, "--order", order)
+    assert json.loads(project.read_text())["layout"]["order"] == order
+
+
+def test_input_order_starts_top_left(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    rects = _layout(_create(capsys, photo_dir, tmp_path, "--order", "input"))
+    x, y, _, _ = rects["p001"]
+    assert x == min(r[0] for r in rects.values())
+    assert y == min(r[1] for r in rects.values())
+
+
+def test_swap_by_number_and_id(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    before = _layout(_create(capsys, photo_dir, tmp_path / "a"))
+    after = _layout(
+        _create(capsys, photo_dir, tmp_path / "b", "--swap", "1,3", "--swap", "p002,p008")
+    )
+    assert after["p001"] == before["p003"]
+    assert after["p003"] == before["p001"]
+    assert after["p002"] == before["p008"]
+    assert after["p004"] == before["p004"]
+
+
+def test_swap_in_existing_project(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    project = _create(capsys, photo_dir, tmp_path)
+    before = _layout(project)
+    code, _, _ = _run(
+        capsys, "-p", str(project), "-o", str(tmp_path / "y.png"), "--swap", "2,5",
+        "--save-project", str(project),
+    )  # fmt: skip
+    assert code == 0
+    after = _layout(project)
+    assert (after["p002"], after["p005"]) == (before["p005"], before["p002"])
+
+
+@pytest.mark.parametrize(
+    ("swap", "message"),
+    [("1,99", "out of range 1..8"), ("0,1", "out of range"), ("p001,p999", "no photo with id"),
+     ("2,2", "with itself")],
+)  # fmt: skip
+def test_invalid_swaps(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path, swap: str, message: str
+) -> None:
+    code, _, err = _run(
+        capsys, "-i", str(photo_dir), "-o", str(tmp_path / "x.png"), "--size", "300x200",
+        "--seed", "1", "--swap", swap,
+    )  # fmt: skip
+    assert code == 1
+    assert message in err

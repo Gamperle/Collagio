@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from collagio.core.model import Rect
+from collagio.core.model import PlacementOrder, Rect
 from collagio.errors import LayoutError
 from collagio.layout.grid import GridSettings, grid_layout
 
@@ -45,6 +45,7 @@ def _check_tiling(rects: list[Rect], width: float, height: float, s: GridSetting
     gap=st.floats(0, 8),
     margin=st.floats(0, 50),
     variation=st.floats(0, 1),
+    order=st.sampled_from(PlacementOrder),
     seed=st.integers(0, 2**32),
 )
 def test_layout_is_an_exact_tiling(
@@ -54,9 +55,10 @@ def test_layout_is_an_exact_tiling(
     gap: float,
     margin: float,
     variation: float,
+    order: PlacementOrder,
     seed: int,
 ) -> None:
-    s = GridSettings(gap=gap, margin=margin, size_variation=variation)
+    s = GridSettings(gap=gap, margin=margin, size_variation=variation, order=order)
     rects = grid_layout(aspects, width, height, s, random.Random(seed))
     assert len(rects) == len(aspects)
     _check_tiling(rects, width, height, s)
@@ -141,3 +143,45 @@ def test_margin_too_large() -> None:
 def test_gap_too_large() -> None:
     with pytest.raises(LayoutError, match="cannot fit 100 photos"):
         grid_layout([1.0] * 100, 200, 200, GridSettings(gap=30), random.Random(0))
+
+
+MIXED = [1.5, 0.67, 1.0, 1.33, 0.75, 1.78, 0.56, 1.5, 0.67, 1.2]
+
+
+def _assignment(order: PlacementOrder, seed: int) -> tuple[tuple[int, int], ...]:
+    s = GridSettings(gap=6, margin=10, order=order)
+    rects = grid_layout(MIXED, 2480, 3508, s, random.Random(seed))
+    return tuple((round(r.x), round(r.y)) for r in rects)
+
+
+def test_input_order_reads_from_top_left() -> None:
+    s = GridSettings(gap=6, margin=10, order=PlacementOrder.INPUT)
+    for seed in range(10):
+        rects = grid_layout(MIXED, 2480, 3508, s, random.Random(seed))
+        assert (rects[0].x, rects[0].y) == (10, 10)
+        # The last photo ends at the bottom-right corner.
+        assert rects[-1].right == pytest.approx(2470)
+        assert rects[-1].bottom == pytest.approx(3498)
+
+
+def test_random_order_places_photos_differently_per_seed() -> None:
+    """Even with the same cell structure, random order moves the first photo around."""
+    first_positions = {_assignment(PlacementOrder.RANDOM, seed)[0] for seed in range(10)}
+    assert len(first_positions) > 3
+
+
+def test_shape_order_crops_least() -> None:
+    def crop_loss(order: PlacementOrder) -> float:
+        s = GridSettings(gap=6, margin=10, order=order)
+        total = 0.0
+        for seed in range(10):
+            rects = grid_layout(MIXED, 2480, 3508, s, random.Random(seed))
+            total += sum(abs(math.log(r.aspect / a)) for r, a in zip(rects, MIXED, strict=True))
+        return total
+
+    assert crop_loss(PlacementOrder.SHAPE) < crop_loss(PlacementOrder.RANDOM)
+    assert crop_loss(PlacementOrder.SHAPE) < crop_loss(PlacementOrder.INPUT)
+
+
+def test_shape_order_is_the_default() -> None:
+    assert GridSettings().order is PlacementOrder.SHAPE

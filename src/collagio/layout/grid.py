@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from itertools import accumulate
 from random import Random
 
-from collagio.core.model import Rect
+from collagio.core.model import PlacementOrder, Rect
 from collagio.errors import LayoutError
 
 # Extra weight drawn per photo, scaled by size_variation: most photos stay
@@ -33,6 +33,7 @@ class GridSettings:
     gap: float = 0.0  # pixels
     margin: float = 0.0  # pixels
     size_variation: float = 0.5
+    order: PlacementOrder = PlacementOrder.SHAPE
     candidates: int = 16
 
 
@@ -97,8 +98,21 @@ def _partition(
     )
 
 
-def _assign(cells: Sequence[Rect], aspects: Sequence[float]) -> list[Rect]:
-    """Give the widest cell to the widest photo, and so on."""
+def _assign(
+    cells: Sequence[Rect], aspects: Sequence[float], order: PlacementOrder, rng: Random
+) -> list[Rect]:
+    """Decide which photo goes into which cell.
+
+    SHAPE gives the widest cell to the widest photo, and so on (least cropping).
+    INPUT fills cells in partition order, which reads from the top-left.
+    RANDOM shuffles; candidate scoring still prefers shuffles that crop less.
+    """
+    if order is PlacementOrder.INPUT:
+        return list(cells)
+    if order is PlacementOrder.RANDOM:
+        shuffled = list(cells)
+        rng.shuffle(shuffled)
+        return shuffled
     cell_order = sorted(range(len(cells)), key=lambda i: cells[i].aspect)
     photo_order = sorted(range(len(aspects)), key=lambda i: aspects[i])
     result: list[Rect] = [cells[0]] * len(cells)
@@ -146,7 +160,7 @@ def grid_layout(
         cells = _partition(content, weights, settings.gap, target_aspect, rng)
         if min(min(c.width, c.height) for c in cells) < 1.0:
             continue
-        rects = _assign(cells, aspects)
+        rects = _assign(cells, aspects, settings.order, rng)
         score = _score(rects, aspects, content)
         if score < best_score:
             best, best_score = rects, score

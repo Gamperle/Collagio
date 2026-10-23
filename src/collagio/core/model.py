@@ -70,6 +70,14 @@ class LayoutMode(StrEnum):
     GRID = "grid"
 
 
+class PlacementOrder(StrEnum):
+    """Which photo goes into which layout cell."""
+
+    SHAPE = "shape"  # match photo and cell aspect ratios: least cropping
+    RANDOM = "random"  # shuffled, depends on the seed
+    INPUT = "input"  # photo order, starting top-left
+
+
 class BackgroundKind(StrEnum):
     SOLID = "solid"
     GRADIENT = "gradient"
@@ -107,6 +115,7 @@ class LayoutSettings:
     gap: float = 0.01  # fraction of canvas short edge
     margin: float = 0.02  # fraction of canvas short edge
     size_variation: float = 0.5  # 0 = equal cell sizes, 1 = strong variation
+    order: PlacementOrder = PlacementOrder.SHAPE
 
 
 @dataclass

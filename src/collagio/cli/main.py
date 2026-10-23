@@ -4,7 +4,7 @@ Examples:
     collagio -i ./photos -o collage.png --size A4 --dpi 300 --seed 42
     collagio -i a.jpg b.jpg c.jpg -o out.jpg --size fullhd --border 8 \\
              --save-project my.collagio.json
-    collagio --project my.collagio.json -o out.png
+    collagio --project my.collagio.json -o out.png --swap 1,4
 """
 
 from __future__ import annotations
@@ -16,12 +16,14 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from collagio import __version__
+from collagio.core.commands import SwapPhotos
 from collagio.core.model import (
     Background,
     BackgroundKind,
     Canvas,
     LayoutMode,
     LayoutSettings,
+    PlacementOrder,
     Project,
     StyleRef,
 )
@@ -54,6 +56,13 @@ def _positive_int(value: str) -> int:
     if number <= 0:
         raise argparse.ArgumentTypeError(f"must be positive, got {value}")
     return number
+
+
+def _swap_pair(value: str) -> tuple[str, str]:
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) != 2 or not all(parts):
+        raise argparse.ArgumentTypeError(f"expected two photos separated by a comma, got {value!r}")
+    return parts[0], parts[1]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -125,6 +134,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.5,
         help="0 = equal sizes, 1 = strong variation (default 0.5)",
     )
+    layout.add_argument(
+        "--order",
+        choices=[o.value for o in PlacementOrder],
+        help="which photo goes into which cell: shape = least cropping (default), "
+        "random = shuffled by the seed, input = given order from the top-left",
+    )
+    layout.add_argument(
+        "--swap",
+        action="append",
+        default=[],
+        type=_swap_pair,
+        metavar="A,B",
+        help="swap the positions of two photos after the layout, by number in input order "
+        "(1, 2, ...) or by id from the project file (p001, ...); repeatable",
+    )
 
     style = parser.add_argument_group("style")
     style.add_argument("--style", choices=available_styles(), default="plain")
@@ -184,10 +208,21 @@ def _new_project(args: argparse.Namespace) -> Project:
             gap=args.gap,
             margin=args.margin,
             size_variation=args.size_variation,
+            order=PlacementOrder(args.order or PlacementOrder.SHAPE),
         ),
         _style(args),
         seed=args.seed,
     )
+
+
+def _photo_id(project: Project, token: str) -> str:
+    """A photo id from a 1-based number in input order, or the id itself."""
+    if token.isdigit():
+        number = int(token)
+        if not 1 <= number <= len(project.photos):
+            raise CollagioError(f"photo number {number} is out of range 1..{len(project.photos)}")
+        return project.photos[number - 1].id
+    return token
 
 
 def run(args: argparse.Namespace) -> int:
@@ -198,6 +233,8 @@ def run(args: argparse.Namespace) -> int:
         if args.seed is None:
             args.seed = random.SystemRandom().randrange(1_000_000)
         project = _new_project(args)
+    for first, second in args.swap:
+        SwapPhotos(_photo_id(project, first), _photo_id(project, second)).apply(project)
     export_image(project, args.output, quality=args.quality)
     if args.save_project is not None:
         save_project(project, args.save_project)
@@ -215,6 +252,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("use either --input or --project, not both")
     if args.project is None and not args.input:
         parser.error("no photos given; use --input or --project")
+    if args.project is not None and args.order is not None:
+        parser.error("--order only applies when creating a collage from --input")
     try:
         return run(args)
     except (CollagioError, OSError) as exc:
