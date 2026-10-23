@@ -144,6 +144,52 @@ def test_clear_and_listeners() -> None:
     assert not stack.modified
 
 
+def _crop(photo_id: str = "p0", size: float = 0.5) -> SetCrop:
+    return SetCrop(photo_id, CropBox(0.1, 0.1, size, size))
+
+
+def test_merged_crops_are_one_undo_step() -> None:
+    stack = UndoStack(_project())
+    for size in (0.9, 0.8, 0.7):
+        stack.push(_crop(size=size), merge=True)
+    assert stack.project.photos[0].crop == CropBox(0.1, 0.1, 0.7, 0.7)
+    stack.undo()
+    assert stack.project == _project()
+    assert not stack.can_undo
+    stack.redo()
+    assert stack.project.photos[0].crop == CropBox(0.1, 0.1, 0.7, 0.7)
+
+
+def test_merge_only_when_asked_and_for_the_same_photo() -> None:
+    stack = UndoStack(_project())
+    stack.push(_crop(size=0.9))
+    stack.push(_crop(size=0.8))  # merge not requested
+    stack.push(_crop("p1"), merge=True)  # other photo
+    stack.push(_move(), merge=True)  # other command
+    stack.push(_crop(), merge=True)  # previous command is a move
+    undone = 0
+    while stack.can_undo:
+        stack.undo()
+        undone += 1
+    assert undone == 5
+
+
+def test_no_merge_into_saved_state_or_after_undo() -> None:
+    stack = UndoStack(_project())
+    stack.push(_crop(size=0.9))
+    stack.set_clean()
+    stack.push(_crop(size=0.8), merge=True)
+    assert stack.modified
+    stack.undo()
+    assert not stack.modified  # the saved state is still reachable
+    stack.push(_crop("p1", 0.9))
+    stack.push(_crop("p1", 0.8))
+    stack.undo()
+    stack.push(_crop("p1", 0.7), merge=True)  # would merge into a command that stays in history
+    stack.undo()
+    assert stack.project.photos[1].crop == CropBox(0.1, 0.1, 0.9, 0.9)
+
+
 # --- all commands together -----------------------------------------------------------------------
 
 COMMANDS = st.one_of(

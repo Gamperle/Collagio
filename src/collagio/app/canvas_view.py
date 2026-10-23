@@ -15,6 +15,7 @@ per gesture when the mouse is released:
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
@@ -74,6 +75,7 @@ ROTATE_HANDLE_PX = 28  # distance of the rotation handle above the top edge, on 
 DRAG_THRESHOLD_PX = 4
 ZOOM_STEP = 1.15
 CROP_ZOOM_STEP = 1.1
+CROP_ZOOM_MERGE_SECONDS = 0.5  # wheel steps closer together are one undo step
 
 
 def canvas_key(project: Project) -> tuple[int, int]:
@@ -179,6 +181,7 @@ class CanvasView(QGraphicsView):
         self._background_request = 0
         self._tile_requests: dict[str, int] = {}
         self._drag = _Drag()
+        self._last_crop_zoom: tuple[str, float] | None = None  # photo id, time
 
         renderer.tile_ready.connect(self._on_tile)
         renderer.background_ready.connect(self._on_background)
@@ -547,9 +550,17 @@ class CanvasView(QGraphicsView):
                     min(max(local[1] / photo.rect.height + 0.5, 0.0), 1.0),
                 )
                 crop = self.current_crop(photo)
+                now = time.monotonic()
+                last = self._last_crop_zoom
+                merge = (
+                    last is not None
+                    and last[0] == photo.id
+                    and now - last[1] < CROP_ZOOM_MERGE_SECONDS
+                )
+                self._last_crop_zoom = (photo.id, now)
                 try:
                     self.document.crop_photo(
-                        photo.id, zoom_crop(crop, CROP_ZOOM_STEP**steps, anchor)
+                        photo.id, zoom_crop(crop, CROP_ZOOM_STEP**steps, anchor), merge
                     )
                 except CollagioError as exc:
                     self.error.emit(str(exc))

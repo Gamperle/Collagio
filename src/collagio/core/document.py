@@ -115,8 +115,8 @@ class Document:
 
     # --- undo ------------------------------------------------------------------------------------
 
-    def execute(self, command: Command) -> None:
-        self.undo_stack.push(command)
+    def execute(self, command: Command, merge: bool = False) -> None:
+        self.undo_stack.push(command, merge)
 
     def undo(self) -> None:
         self.undo_stack.undo()
@@ -233,8 +233,9 @@ class Document:
 
         self._edit(label, change, relayout=False)
 
-    def crop_photo(self, photo_id: str, crop: CropBox | None) -> None:
-        self.execute(SetCrop(photo_id, crop))
+    def crop_photo(self, photo_id: str, crop: CropBox | None, merge: bool = False) -> None:
+        """Set the crop; `merge` makes it one undo step with the previous crop of this photo."""
+        self.execute(SetCrop(photo_id, crop), merge)
 
     def swap_photos(self, first_id: str, second_id: str) -> None:
         self.execute(SwapPhotos(first_id, second_id))
