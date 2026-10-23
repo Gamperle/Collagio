@@ -122,6 +122,7 @@ class MainWindow(QMainWindow):
         self.export_pool.setMaxThreadCount(1)
 
         self.renderer = PreviewRenderer(ThumbnailCache(self.cache_dir / "thumbnails"), self)
+        self.renderer.prune_cache()
         self.canvas = CanvasView(self.document, self.renderer)
         self.setCentralWidget(self.canvas)
 
@@ -207,6 +208,9 @@ class MainWindow(QMainWindow):
         self.zoom_out_action = self._action(
             self.tr("Zoom &out"), lambda: self.canvas.zoom(0.8), keys.ZoomOut
         )
+        self.clear_cache_action = self._action(
+            self.tr("Clear &thumbnail cache"), self.clear_thumbnail_cache
+        )
         self.about_action = self._action(self.tr("&About Collagio"), self.about)
 
         file_menu = self.menuBar().addMenu(self.tr("&File"))
@@ -246,6 +250,8 @@ class MainWindow(QMainWindow):
             action.setCheckable(True)
             action.setChecked(code == current)
             action.triggered.connect(lambda _=False, c=code: self.set_language(c))
+        view_menu.addSeparator()
+        view_menu.addAction(self.clear_cache_action)
         help_menu = self.menuBar().addMenu(self.tr("&Help"))
         help_menu.addAction(self.about_action)
 
@@ -494,6 +500,14 @@ class MainWindow(QMainWindow):
     @property
     def autosave_path(self) -> Path:
         return self.cache_dir / AUTOSAVE_NAME
+
+    def clear_thumbnail_cache(self) -> None:
+        self.renderer.wait()  # no preview is being written meanwhile
+        freed = self.renderer.cache.clear_disk()
+        megabytes = f"{freed / 1024 / 1024:.1f}"
+        self.statusBar().showMessage(
+            self.tr("Thumbnail cache cleared ({} MB freed)").format(megabytes), 5000
+        )
 
     def autosave(self) -> None:
         try:

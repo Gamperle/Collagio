@@ -397,6 +397,10 @@
         <translation>Ver&amp;kleinern</translation>
     </message>
     <message>
+        <source>Clear &amp;thumbnail cache</source>
+        <translation>Vorschaubild-&amp;Cache leeren</translation>
+    </message>
+    <message>
         <source>&amp;About Collagio</source>
         <translation>Über &amp;Collagio</translation>
     </message>
@@ -471,6 +475,10 @@
     <message>
         <source>Add photos</source>
         <translation>Fotos hinzufügen</translation>
+    </message>
+    <message>
+        <source>Thumbnail cache cleared ({} MB freed)</source>
+        <translation>Vorschaubild-Cache geleert ({} MB freigegeben)</translation>
     </message>
     <message>
         <source>Autosave failed: {}</source>
