@@ -2,8 +2,7 @@
 
 Desktop photo collage creator for Windows and Linux.
 
-> **Status:** early development. Phases 1-5 are done: desktop editor, command line and
-> print-ready PDF export work; German UI and installers follow.
+> **Status:** feature-complete for 0.1 (all six phases of the plan). Not yet released.
 > The desktop GUI follows in Phase 4.
 
 ## Planned features
@@ -21,11 +20,24 @@ Desktop photo collage creator for Windows and Linux.
 See [TASK.md](TASK.md) for the specification and
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the roadmap and test strategy.
 
+## Installation
+
+Download from the [releases page](https://github.com/Gamperle/Collagio/releases):
+
+- **Windows:** `Collagio-X.Y.Z-setup.exe` (no admin rights needed; associates `.collagio`
+  files) or the portable zip.
+- **Linux:** `Collagio-X.Y.Z-x86_64.AppImage` (make it executable and run it), the Flatpak
+  bundle (`flatpak install --user Collagio-X.Y.Z-x86_64.flatpak`), or the portable archive.
+  The AppImage also contains the command line: `./Collagio-*.AppImage collagio --help`.
+- **From source:** `pip install "collagio[gui]"` in a Python 3.12+ environment.
+
+The interface follows the system language (English or German); *View > Language* changes it.
+
 ## Desktop editor
 
 ```bash
 uv sync --extra gui      # or: pip install "collagio[gui]"
-uv run collagio-gui      # optionally followed by photos, folders or a .collagio.json file
+uv run collagio-gui      # optionally followed by photos, folders or a .collagio file
 ```
 
 - Add photos with **File > Add photos**, the photo list's button, or by dropping files or
@@ -51,13 +63,13 @@ uv run collagio-gui      # optionally followed by photos, folders or a .collagio
 ```bash
 collagio -i ./photos -o collage.png --size A4 --dpi 300 --seed 42
 collagio -i a.jpg b.jpg c.jpg -o out.jpg --size fullhd --border 8 --corner-radius 12 \
-         --background "#f4f1ea" --save-project my.collagio.json
+         --background "#f4f1ea" --save-project my.collagio
 collagio -i ./photos -o scattered.jpg --mode scattered --rotation 15 --overlap 0.7
 collagio -i ./photos -o mixed.jpg --mode scattered --mix stamp,polaroid,tape,torn
 collagio -i ./photos -o out.png --style polaroid --style-param "caption=Summer 2026"
 collagio -i ./photos -o print.pdf --size A4 --bleed 3 --crop-marks --title "Summer 2026"
 collagio -i ./photos -o wall.jpg --background texture:cork --style polaroid --mode scattered
-collagio --project my.collagio.json -o out.png      # re-render a saved project
+collagio --project my.collagio -o out.png      # re-render a saved project
 collagio --help                                     # all options
 ```
 
@@ -103,6 +115,19 @@ uv run pytest --update-golden    # regenerate golden reference images
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 uv run pre-commit install        # run lint/type checks on every commit
+```
+
+Translations: after changing interface texts, run `uv run python scripts/translations.py update`,
+translate the new entries in `src/collagio/i18n/collagio_de.ts` (e.g. with
+`uv run pyside6-linguist`), then `uv run python scripts/translations.py release`. A test fails if
+a text is untranslated or the compiled `.qm` file is stale.
+
+Packaging (normally done by the *Release* workflow):
+
+```bash
+uv sync --group build
+uv run pyinstaller packaging/pyinstaller/collagio.spec --noconfirm --distpath build/dist
+packaging/linux/build-appimage.sh build/dist/Collagio 0.1.0 build/release   # needs appimagetool
 ```
 
 Generate the synthetic test photos to look at them:

@@ -1,0 +1,43 @@
+# Flatpak packaging of the PyInstaller build (Qt and Python come with the build).
+# Built in CI (release workflow) after the PyInstaller job:
+#   flatpak-builder --repo=repo build packaging/linux/io.github.gamperle.Collagio.yml
+# expects the PyInstaller folder at build/dist/Collagio.
+app-id: io.github.gamperle.Collagio
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+command: collagio-gui
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Collages reference photos by path, so photo folders must be readable.
+  - --filesystem=home
+  - --filesystem=xdg-pictures
+modules:
+  - name: collagio
+    buildsystem: simple
+    build-commands:
+      - cp -a Collagio /app/lib/collagio
+      - mkdir -p /app/bin
+      - ln -s ../lib/collagio/collagio-gui /app/bin/collagio-gui
+      - ln -s ../lib/collagio/collagio /app/bin/collagio
+      - install -Dm644 io.github.gamperle.Collagio.desktop -t /app/share/applications
+      - install -Dm644 io.github.gamperle.Collagio.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 io.github.gamperle.Collagio.xml -t /app/share/mime/packages
+      - install -Dm644 collagio-256.png /app/share/icons/hicolor/256x256/apps/io.github.gamperle.Collagio.png
+      - install -Dm644 collagio.svg /app/share/icons/hicolor/scalable/apps/io.github.gamperle.Collagio.svg
+    sources:
+      - type: dir
+        path: ../../build/dist
+      - type: file
+        path: io.github.gamperle.Collagio.desktop
+      - type: file
+        path: io.github.gamperle.Collagio.metainfo.xml
+      - type: file
+        path: io.github.gamperle.Collagio.xml
+      - type: file
+        path: ../icons/collagio-256.png
+      - type: file
+        path: ../../src/collagio/assets/collagio.svg

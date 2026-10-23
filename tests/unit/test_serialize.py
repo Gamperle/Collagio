@@ -23,6 +23,7 @@ from collagio.core.model import (
     TextItem,
 )
 from collagio.core.serialize import (
+    is_project_file,
     load_project,
     project_from_dict,
     project_to_dict,
@@ -81,14 +82,14 @@ def test_dict_is_json_serialisable(tmp_path: Path) -> None:
 
 def test_file_round_trip(tmp_path: Path) -> None:
     project = _project(tmp_path / "photos")
-    path = tmp_path / "my.collagio.json"
+    path = tmp_path / "my.collagio"
     save_project(project, path)
     assert load_project(path) == project
 
 
 def test_paths_are_stored_relative_with_forward_slashes(tmp_path: Path) -> None:
     project = _project(tmp_path / "photos")
-    path = tmp_path / "my.collagio.json"
+    path = tmp_path / "my.collagio"
     save_project(project, path)
     stored = [p["path"] for p in json.loads(path.read_text())["photos"]]
     assert stored == ["photos/a.jpg", "photos/sub/b.png", "photos/c.webp"]
@@ -98,10 +99,10 @@ def test_moving_the_project_folder_keeps_photos_resolvable(tmp_path: Path) -> No
     original = tmp_path / "old"
     original.mkdir()
     project = _project(original / "photos")
-    save_project(project, original / "p.collagio.json")
+    save_project(project, original / "p.collagio")
     moved = tmp_path / "new"
     original.rename(moved)
-    loaded = load_project(moved / "p.collagio.json")
+    loaded = load_project(moved / "p.collagio")
     assert loaded.photos[0].path == str(moved / "photos" / "a.jpg")
 
 
@@ -173,7 +174,7 @@ def test_non_object_document_is_rejected() -> None:
 
 
 def test_invalid_json_file(tmp_path: Path) -> None:
-    path = tmp_path / "broken.collagio.json"
+    path = tmp_path / "broken.collagio"
     path.write_text("{ nope", encoding="utf-8")
     with pytest.raises(ProjectFormatError, match="not valid JSON"):
         load_project(path)
@@ -215,7 +216,7 @@ def test_texts_and_backgrounds_round_trip(tmp_path: Path) -> None:
         TextItem("t002", "x", 1, 2),
     ]  # fmt: skip
     project.layout.space_bottom = 0.1
-    path = tmp_path / "p.collagio.json"
+    path = tmp_path / "p.collagio"
     save_project(project, path)
     document = json.loads(path.read_text())
     assert document["schema_version"] == 2
@@ -256,3 +257,13 @@ def test_invalid_schema_2_parts(mutate: Any) -> None:
     mutate(document)
     with pytest.raises(ProjectFormatError, match="invalid project file"):
         project_from_dict(document)
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("a.collagio", True), ("A.COLLAGIO", True), ("a.collagio.json", True), ("a.json", False),
+     ("collagio", False), ("a.collagio.bak", False)],
+)  # fmt: skip
+def test_is_project_file(name: str, expected: bool) -> None:
+    assert is_project_file(name) is expected
+    assert is_project_file(Path(name)) is expected

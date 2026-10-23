@@ -129,7 +129,7 @@ def test_too_few_photos(
 
 
 def test_broken_project_file(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
-    project = tmp_path / "p.collagio.json"
+    project = tmp_path / "p.collagio"
     project.write_text("{}")
     code, _, err = _run(capsys, "-p", str(project), "-o", str(tmp_path / "x.png"))
     assert (code, "not a Collagio project" in err) == (1, True)
@@ -184,7 +184,7 @@ def test_paper_size_dpi_and_orientation(
 def test_style_and_background_options_are_saved(
     capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
 ) -> None:
-    project_path = tmp_path / "p.collagio.json"
+    project_path = tmp_path / "p.collagio"
     code, _, _ = _run(
         capsys, "-i", str(photo_dir), "-o", str(tmp_path / "x.png"), "--size", "400x300",
         "--seed", "3", "--gap", "0.02", "--margin", "0.05", "--size-variation", "0.8",
@@ -250,7 +250,7 @@ def _create(
     capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path, *extra: str
 ) -> Path:
     tmp_path.mkdir(exist_ok=True)
-    project = tmp_path / "p.collagio.json"
+    project = tmp_path / "p.collagio"
     code, _, err = _run(
         capsys, "-i", str(photo_dir), "-o", str(tmp_path / "x.png"), "--size", "400x300",
         "--seed", "8", "--save-project", str(project), *extra,

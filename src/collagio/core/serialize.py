@@ -1,4 +1,4 @@
-"""Project files (*.collagio.json): JSON with a schema version.
+"""Project files (*.collagio): JSON with a schema version.
 
 Photo paths are stored relative to the project file where possible, with
 forward slashes, so a project folder can be moved or shared between Windows
@@ -32,7 +32,14 @@ from collagio.core.model import (
 )
 from collagio.errors import ProjectFormatError
 
-PROJECT_SUFFIX = ".collagio.json"
+PROJECT_SUFFIX = ".collagio"
+LEGACY_SUFFIXES = (".collagio.json",)  # used before 0.1; still opened and saved in place
+
+
+def is_project_file(path: str | Path) -> bool:
+    name = str(path).lower()
+    return name.endswith(PROJECT_SUFFIX) or name.endswith(LEGACY_SUFFIXES)
+
 
 # Upgrades a document from version N to N + 1, keyed by N.
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Collagio app icon. Licensed GPL-3.0-or-later like the rest of Collagio. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3f78b5"/>
+      <stop offset="1" stop-color="#1f3a63"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9be3da"/>
+      <stop offset="1" stop-color="#23807c"/>
+    </linearGradient>
+    <linearGradient id="sunset" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd987"/>
+      <stop offset="1" stop-color="#ee7d45"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#cdeb8b"/>
+      <stop offset="1" stop-color="#3f8a32"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+
+  <!-- back left: sea (Polaroid) -->
+  <g transform="rotate(-14 90 112)">
+    <rect x="36" y="56" width="112" height="128" rx="5" fill="#000" opacity="0.25" transform="translate(4 6)"/>
+    <rect x="36" y="56" width="112" height="128" rx="5" fill="#fbfaf5"/>
+    <rect x="46" y="66" width="92" height="84" fill="url(#sea)"/>
+    <path d="M46 132 q23 -12 46 0 t46 0 v18 h-92 z" fill="#1f6e6b" opacity="0.6"/>
+  </g>
+
+  <!-- back right: sunset -->
+  <g transform="rotate(11 170 100)">
+    <rect x="118" y="44" width="104" height="112" rx="5" fill="#000" opacity="0.25" transform="translate(4 6)"/>
+    <rect x="118" y="44" width="104" height="112" rx="5" fill="#ffffff"/>
+    <rect x="127" y="53" width="86" height="94" fill="url(#sunset)"/>
+    <circle cx="170" cy="118" r="18" fill="#fff4c7"/>
+    <rect x="127" y="122" width="86" height="25" fill="#b8573a" opacity="0.85"/>
+  </g>
+
+  <!-- front: leaves -->
+  <g transform="rotate(-4 134 178)">
+    <rect x="66" y="130" width="140" height="94" rx="5" fill="#000" opacity="0.3" transform="translate(4 6)"/>
+    <rect x="66" y="130" width="140" height="94" rx="5" fill="#ffffff"/>
+    <rect x="75" y="139" width="122" height="76" fill="url(#leaf)"/>
+    <path d="M90 205 q30 -60 92 -55 q-20 52 -92 55 z" fill="#2f6d27" opacity="0.55"/>
+  </g>
+</svg>

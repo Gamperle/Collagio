@@ -1,0 +1,173 @@
+name: Release
+
+# Tag vX.Y.Z (matching collagio.__version__) to build and publish a release.
+# "Run workflow" builds the same packages as artefacts without publishing anything.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04  # older glibc: the build runs on more distributions
+    env:
+      QT_QPA_PLATFORM: offscreen
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: "3.13"
+      - name: Qt system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - run: uv sync --locked --group build
+      - name: Version
+        id: version
+        run: echo "version=$(uv run python -c 'import collagio; print(collagio.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: PyInstaller
+        run: uv run pyinstaller packaging/pyinstaller/collagio.spec --noconfirm --distpath build/dist --workpath build/work
+      - name: Smoke test (frozen)
+        run: |
+          build/dist/Collagio/collagio --version
+          uv run python tests/fixtures/generate.py build/photos
+          build/dist/Collagio/collagio -i build/photos -o build/smoke.pdf --size A6 --dpi 100 --bleed 3 --crop-marks --background texture:cork --style polaroid --title Smoke
+          build/dist/Collagio/collagio-gui --self-test
+          COLLAGIO_LANG=de build/dist/Collagio/collagio-gui --self-test
+      - name: AppImage
+        run: |
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          APPIMAGETOOL=$PWD/appimagetool packaging/linux/build-appimage.sh build/dist/Collagio "${{ steps.version.outputs.version }}" build/release
+          build/release/Collagio-*-x86_64.AppImage --self-test
+          build/release/Collagio-*-x86_64.AppImage collagio --version
+      - name: Portable archive
+        run: tar -C build/dist -czf "build/release/Collagio-${{ steps.version.outputs.version }}-linux-x86_64.tar.gz" Collagio
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: build/release/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pyinstaller-linux
+          path: build/release/*.tar.gz
+
+  flatpak:
+    needs: linux
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: pyinstaller-linux
+          path: build/download
+      - name: Unpack PyInstaller build
+        run: |
+          mkdir -p build/dist
+          tar -C build/dist -xzf build/download/*.tar.gz
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: Collagio.flatpak
+          manifest-path: packaging/linux/io.github.gamperle.Collagio.yml
+          cache: false
+          upload-artifact: false
+      - name: Smoke test (Flatpak)
+        run: |
+          flatpak --user install -y --noninteractive Collagio.flatpak
+          flatpak run --command=collagio io.github.gamperle.Collagio --version
+          QT_QPA_PLATFORM=offscreen flatpak run --env=QT_QPA_PLATFORM=offscreen io.github.gamperle.Collagio --self-test
+      - name: Name the bundle
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/collagio/__init__.py)
+          mkdir -p build/release && mv Collagio.flatpak "build/release/Collagio-$version-x86_64.flatpak"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flatpak
+          path: build/release/
+
+  windows:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked --group build
+      - name: Version
+        id: version
+        shell: bash
+        run: echo "version=$(uv run python -c 'import collagio; print(collagio.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: PyInstaller
+        run: uv run pyinstaller packaging/pyinstaller/collagio.spec --noconfirm --distpath build/dist --workpath build/work
+      - name: Smoke test (frozen)
+        shell: pwsh
+        run: |
+          build\dist\Collagio\collagio.exe --version
+          uv run python tests/fixtures/generate.py build/photos
+          build\dist\Collagio\collagio.exe -i build/photos -o build/smoke.pdf --size A6 --dpi 100 --bleed 3 --crop-marks --background texture:wood --style stamp --title Smoke
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $gui = Start-Process build\dist\Collagio\collagio-gui.exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($gui.ExitCode -ne 0) { throw "GUI self-test failed: $($gui.ExitCode)" }
+      - name: Installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y }
+          & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" packaging\windows\collagio.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Smoke test (installed)
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem build\installer\*.exe | Select-Object -First 1
+          $target = "$env:RUNNER_TEMP\Collagio"
+          $run = Start-Process $setup.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/DIR=$target" -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "installer failed: $($run.ExitCode)" }
+          & "$target\collagio.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $gui = Start-Process "$target\collagio-gui.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($gui.ExitCode -ne 0) { throw "installed GUI self-test failed" }
+      - name: Portable archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build\release | Out-Null
+          Move-Item build\installer\*.exe build\release\
+          Compress-Archive build\dist\Collagio "build\release\Collagio-${{ steps.version.outputs.version }}-windows-x64-portable.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: build/release/
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, flatpak, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag matches the version
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/collagio/__init__.py)
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != version $version"; exit 1; }
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          awk -v v="$version" '$0 ~ "^## \\[?"v {found=1; next} /^## / && found {exit} found' CHANGELOG.md > notes.md
+          test -s notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Collagio ${GITHUB_REF_NAME#v}" --notes-file notes.md

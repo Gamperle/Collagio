@@ -6,8 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QThreadPool, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtCore import QSettings, Qt, QThreadPool, QTimer, QTranslator
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -26,20 +26,19 @@ from PySide6.QtWidgets import (
 
 from collagio import __version__
 from collagio.app.canvas_view import CanvasView
+from collagio.app.i18n import LANGUAGES, choose_language
 from collagio.app.panels import CanvasPanel, LayoutPanel, PhotoListPanel, StylePanel, TextPanel
 from collagio.app.preview import PreviewRenderer
+from collagio.app.strings import command_label, export_filter, image_filter, project_filter
 from collagio.app.workers import ExportJob
 from collagio.core.document import AUTOSAVE_NAME, Document
-from collagio.core.serialize import PROJECT_SUFFIX, load_project
+from collagio.core.serialize import load_project
 from collagio.errors import CollagioError
 from collagio.imaging.cache import ThumbnailCache, default_cache_dir
-from collagio.imaging.loader import SUPPORTED_SUFFIXES, find_images, is_supported
+from collagio.imaging.loader import find_images, is_supported
 
 MAX_RECENT = 8
 AUTOSAVE_INTERVAL_MS = 120_000
-PROJECT_FILTER = f"Collagio projects (*{PROJECT_SUFFIX})"
-IMAGE_FILTER = "Photos ({})".format(" ".join(f"*{s}" for s in sorted(SUPPORTED_SUFFIXES)))
-EXPORT_FILTER = "PNG image (*.png);;JPEG image (*.jpg *.jpeg);;PDF for printing (*.pdf)"
 
 
 @dataclass
@@ -82,6 +81,13 @@ class ExportOptionsDialog(QDialog):
         return ExportOptions(self.quality.value(), self.bleed.value(), self.crop_marks.isChecked())
 
 
+ICON_PATH = Path(__file__).resolve().parent.parent / "assets" / "collagio.svg"
+
+
+def app_icon() -> QIcon:
+    return QIcon(str(ICON_PATH))
+
+
 def expand_paths(paths: list[str]) -> list[str]:
     """Files as given, folders replaced by the photos directly inside them."""
     result: list[str] = []
@@ -95,6 +101,8 @@ def expand_paths(paths: list[str]) -> list[str]:
 
 
 class MainWindow(QMainWindow):
+    translators: list[QTranslator]
+
     def __init__(
         self,
         document: Document | None = None,
@@ -105,6 +113,8 @@ class MainWindow(QMainWindow):
         self.settings = settings if settings is not None else QSettings()
         self.cache_dir = cache_dir if cache_dir is not None else default_cache_dir()
         self.document = document if document is not None else Document()
+        self.translators = []
+        self.setWindowIcon(app_icon())
         self.selected: list[str] = []
         self.export_job: ExportJob | None = None
         self.export_options = ExportOptions()
@@ -229,6 +239,13 @@ class MainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu(self.tr("&View"))
         for action in (self.fit_action, self.zoom_in_action, self.zoom_out_action):
             view_menu.addAction(action)
+        language_menu = view_menu.addMenu(self.tr("&Language"))
+        current = choose_language(self.settings)
+        for code, name in LANGUAGES.items():
+            action = language_menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(code == current)
+            action.triggered.connect(lambda _=False, c=code: self.set_language(c))
         help_menu = self.menuBar().addMenu(self.tr("&Help"))
         help_menu.addAction(self.about_action)
 
@@ -288,12 +305,22 @@ class MainWindow(QMainWindow):
         self.style_panel.set_selection(self.selected)
         self.canvas_panel.refresh()
         self.text_panel.refresh(self.canvas.selected_text)
-        self.setWindowTitle(f"{document.title} \u2013 Collagio")
+        name = document.path.name if document.path is not None else self.tr("Untitled")
+        modified = "*" if document.modified else ""
+        self.setWindowTitle(f"{name}{modified} \u2013 Collagio")
         stack = document.undo_stack
         self.undo_action.setEnabled(stack.can_undo)
         self.redo_action.setEnabled(stack.can_redo)
-        self.undo_action.setText(self.tr("&Undo {}").format(stack.undo_label or "").strip())
-        self.redo_action.setText(self.tr("&Redo {}").format(stack.redo_label or "").strip())
+        self.undo_action.setText(
+            self.tr("&Undo {}").format(command_label(stack.undo_label))
+            if stack.undo_label
+            else self.tr("&Undo")
+        )
+        self.redo_action.setText(
+            self.tr("&Redo {}").format(command_label(stack.redo_label))
+            if stack.redo_label
+            else self.tr("&Redo")
+        )
         has_photos = bool(document.project.photos)
         self.export_action.setEnabled(has_photos)
         self._update_selection_actions()
@@ -391,7 +418,7 @@ class MainWindow(QMainWindow):
 
     def open_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("Open collage"), self._last_folder(), PROJECT_FILTER
+            self, self.tr("Open collage"), self._last_folder(), project_filter()
         )
         if path:
             self.open_file(Path(path))
@@ -415,7 +442,7 @@ class MainWindow(QMainWindow):
 
     def save_as(self) -> bool:
         path, _ = QFileDialog.getSaveFileName(
-            self, self.tr("Save collage"), self._last_folder(), PROJECT_FILTER
+            self, self.tr("Save collage"), self._last_folder(), project_filter()
         )
         return bool(path) and self._save_to(Path(path))
 
@@ -429,7 +456,7 @@ class MainWindow(QMainWindow):
 
     def add_dialog(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
-            self, self.tr("Add photos"), self._last_folder(), IMAGE_FILTER
+            self, self.tr("Add photos"), self._last_folder(), image_filter()
         )
         if paths:
             self.settings.setValue("last_folder", str(Path(paths[0]).parent))
@@ -499,7 +526,7 @@ class MainWindow(QMainWindow):
             self,
             self.tr("Export image"),
             str(start) if start else self._last_folder(),
-            EXPORT_FILTER,
+            export_filter(),
         )
         if not path:
             return
@@ -547,6 +574,14 @@ class MainWindow(QMainWindow):
         self.export_job = job
         self.export_pool.start(job)
         return job
+
+    def set_language(self, code: str) -> None:
+        self.settings.setValue("language", code)
+        QMessageBox.information(
+            self,
+            self.tr("Language"),
+            self.tr("The new language is used after restarting Collagio."),
+        )
 
     # --- misc ------------------------------------------------------------------------------------
 

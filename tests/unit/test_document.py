@@ -175,8 +175,8 @@ def test_direct_edits() -> None:
 def test_save_and_open(tmp_path: Path) -> None:
     doc = _document(3)
     saved = doc.save(tmp_path / "my")
-    assert saved == tmp_path / "my.collagio.json"
-    assert (doc.modified, doc.title) == (False, "my.collagio.json")
+    assert saved == tmp_path / "my.collagio"
+    assert (doc.modified, doc.title) == (False, "my.collagio")
     reopened = Document.open(saved, size_of=size_of)
     assert reopened.project == doc.project
     assert not reopened.modified
@@ -185,11 +185,13 @@ def test_save_and_open(tmp_path: Path) -> None:
 
 def test_save_keeps_existing_suffix_and_path(tmp_path: Path) -> None:
     doc = _document(2)
-    assert doc.save(tmp_path / "a.collagio.json") == tmp_path / "a.collagio.json"
-    assert doc.save(tmp_path / "b.json") == tmp_path / "b.collagio.json"
+    assert doc.save(tmp_path / "a.collagio") == tmp_path / "a.collagio"
+    assert doc.save(tmp_path / "b.json") == tmp_path / "b.collagio"
+    assert doc.save(tmp_path / "old.collagio.json") == tmp_path / "old.collagio.json"  # legacy
+    assert doc.save(tmp_path / "b") == tmp_path / "b.collagio"
     doc.relayout(seed=3)
-    assert doc.save() == tmp_path / "b.collagio.json"
-    assert load_project(tmp_path / "b.collagio.json").seed == 3
+    assert doc.save() == tmp_path / "b.collagio"
+    assert load_project(tmp_path / "b.collagio").seed == 3
 
 
 def test_save_without_path() -> None:

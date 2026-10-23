@@ -3,12 +3,12 @@
 Examples:
     collagio -i ./photos -o collage.png --size A4 --dpi 300 --seed 42
     collagio -i a.jpg b.jpg c.jpg -o out.jpg --size fullhd --border 8 \\
-             --save-project my.collagio.json
+             --save-project my.collagio
     collagio -i ./photos -o scattered.jpg --mode scattered --rotation 15 --overlap 0.5
     collagio -i ./photos -o mixed.jpg --mix stamp,polaroid,tape --photo-style 1=torn
     collagio -i ./photos -o out.png --style polaroid --style-param "caption=Summer 2026"
     collagio -i ./photos -o print.pdf --size A4 --bleed 3 --crop-marks --title "Summer 2026"
-    collagio --project my.collagio.json -o out.png --swap 1,4
+    collagio --project my.collagio -o out.png --swap 1,4
 """
 
 from __future__ import annotations

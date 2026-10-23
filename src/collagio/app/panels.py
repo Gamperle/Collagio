@@ -44,6 +44,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from collagio.app.strings import (
+    choice_label,
+    font_filter,
+    image_filter,
+    parameter_label,
+    texture_label,
+)
 from collagio.core.document import Document
 from collagio.core.model import (
     Background,
@@ -59,13 +66,10 @@ from collagio.core.model import (
 )
 from collagio.core.units import PAPER_SIZES_MM, PIXEL_PRESETS, Orientation, parse_size, px_to_mm
 from collagio.errors import CollagioError
-from collagio.imaging.loader import SUPPORTED_SUFFIXES
 from collagio.render.background import TEXTURES
 from collagio.styles import Style, available_styles, get_style
 
 CUSTOM = "custom"
-IMAGE_FILTER = "Photos ({})".format(" ".join(f"*{s}" for s in sorted(SUPPORTED_SUFFIXES)))
-FONT_FILTER = "Fonts (*.ttf *.otf)"
 MAX_SEED = 999_999
 
 
@@ -76,10 +80,6 @@ def language() -> str:
 def style_label(name: str) -> str:
     labels = get_style(name).labels
     return labels.get(language(), labels["en"])
-
-
-def param_label(name: str) -> str:
-    return name.replace("_", " ").capitalize()
 
 
 # --- small widgets -------------------------------------------------------------------------------
@@ -130,13 +130,14 @@ class StyleForm(QWidget):
         for name, default in style.defaults.items():
             widget = self._make_field(name, default)
             self.fields[name] = widget
-            layout.addRow(param_label(name), widget)
+            layout.addRow(parameter_label(name), widget)
 
     def _make_field(self, name: str, default: Any) -> QWidget:
         style = self.style_definition
         if name in style.choices:
             combo = QComboBox()
-            combo.addItems(list(style.choices[name]))
+            for value in style.choices[name]:
+                combo.addItem(choice_label(value), value)
             return combo
         if isinstance(default, str) and name.endswith("color"):
             return ColorButton(default)
@@ -155,7 +156,7 @@ class StyleForm(QWidget):
         for name, widget in self.fields.items():
             value = values[name]
             if isinstance(widget, QComboBox):
-                widget.setCurrentText(str(value))
+                widget.setCurrentIndex(max(0, widget.findData(str(value))))
             elif isinstance(widget, ColorButton):
                 widget.set_color(str(value))
             elif isinstance(widget, QLineEdit):
@@ -169,7 +170,7 @@ class StyleForm(QWidget):
         for name, widget in self.fields.items():
             value: Any
             if isinstance(widget, QComboBox):
-                value = widget.currentText()
+                value = str(widget.currentData())
             elif isinstance(widget, ColorButton):
                 value = widget.color
             elif isinstance(widget, QLineEdit):
@@ -554,7 +555,7 @@ class CanvasPanel(QWidget):
         self.background_kind.addItem(self.tr("Blurred photo"), BackgroundKind.PHOTO)
         self.texture = QComboBox()
         for name in TEXTURES:
-            self.texture.addItem(self.tr(name.capitalize()), name)
+            self.texture.addItem(texture_label(name), name)
         self.photo = QLineEdit()
         self.photo.setReadOnly(True)
         self.photo_button = QPushButton(self.tr("Choose…"))
@@ -643,7 +644,7 @@ class CanvasPanel(QWidget):
 
     def choose_photo(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("Background photo"), self.photo.text(), IMAGE_FILTER
+            self, self.tr("Background photo"), self.photo.text(), image_filter()
         )
         if path:
             self.photo.setText(path)
@@ -860,7 +861,7 @@ class TextPanel(QWidget):
 
     def choose_font(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("Font"), self.font_edit.text(), FONT_FILTER
+            self, self.tr("Font"), self.font_edit.text(), font_filter()
         )
         if path:
             self.font_edit.setText(path)

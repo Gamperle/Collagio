@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-collagio">
+    <comment>Collagio project</comment>
+    <comment xml:lang="de">Collagio-Projekt</comment>
+    <sub-class-of type="application/json"/>
+    <icon name="io.github.gamperle.Collagio"/>
+    <glob pattern="*.collagio"/>
+    <glob pattern="*.collagio.json" weight="60"/>
+  </mime-type>
+</mime-info>

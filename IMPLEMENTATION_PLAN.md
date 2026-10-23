@@ -221,11 +221,11 @@ Order: postage stamp → cut-out → torn → Polaroid → tape/corners → film
 - *golden*: rasterised PDF (via `pypdfium2`) compared to PNG export of the same
   project.
 
-### Phase 6 – Localisation, packaging, release (M6, ≈1–2 weeks)
+### Phase 6 – Localisation, packaging, release (M6, ≈1–2 weeks) – ✅ done (release pending)
 - All UI strings via `self.tr()`; `pyside6-lupdate` → `de.ts`; translate; `.qm` built in CI
 - PyInstaller one-folder build; Inno Setup installer for Windows
 - AppImage (appimage-builder) and Flatpak manifest (KDE runtime with PySide6)
-- App icon, `.desktop` file, file association for `.collagio.json`
+- App icon, `.desktop` file, file association for `.collagio`
 - Release workflow: tag → build artefacts → GitHub Release
 
 **Tests**

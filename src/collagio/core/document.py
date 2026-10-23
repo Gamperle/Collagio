@@ -31,7 +31,12 @@ from collagio.core.model import (
     StyleRef,
     TextItem,
 )
-from collagio.core.serialize import PROJECT_SUFFIX, load_project, save_project
+from collagio.core.serialize import (
+    PROJECT_SUFFIX,
+    is_project_file,
+    load_project,
+    save_project,
+)
 from collagio.core.undo import UndoStack
 from collagio.errors import EditError
 from collagio.imaging.loader import oriented_size
@@ -74,7 +79,7 @@ class Document:
         target = path if path is not None else self.path
         if target is None:
             raise EditError("no file name given")
-        if not target.name.endswith(PROJECT_SUFFIX):
+        if not is_project_file(target):
             target = target.with_name(target.name.removesuffix(".json") + PROJECT_SUFFIX)
         save_project(self.project, target)
         self.path = target

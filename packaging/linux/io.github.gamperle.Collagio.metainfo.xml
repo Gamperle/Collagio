@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.gamperle.Collagio</id>
+  <name>Collagio</name>
+  <summary>Create photo collages</summary>
+  <summary xml:lang="de">Fotocollagen erstellen</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.gamperle">
+    <name>Markus Gamperle</name>
+  </developer>
+  <description>
+    <p>
+      Collagio turns a set of photos into a collage: a grid with mixed cell sizes or
+      rotated, overlapping photos, with styles such as postage stamps, scissor cut-outs,
+      torn paper, Polaroids, tape and film strips.
+    </p>
+    <p>
+      Photos can be moved, swapped, rotated, resized and cropped by hand, with undo.
+      Collages are exported as PNG, JPEG or print-ready PDF with bleed and crop marks.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.gamperle.Collagio.desktop</launchable>
+  <url type="homepage">https://github.com/Gamperle/Collagio</url>
+  <url type="bugtracker">https://github.com/Gamperle/Collagio/issues</url>
+  <provides>
+    <binary>collagio-gui</binary>
+    <binary>collagio</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-23"/>
+  </releases>
+</component>

@@ -24,7 +24,7 @@ def workspace(sample_photos: list[Path], tmp_path: Path) -> Path:
 
 def test_project_reproduces_cli_output(workspace: Path) -> None:
     first = workspace / "first.png"
-    project = workspace / "my.collagio.json"
+    project = workspace / "my.collagio"
     assert main([
         "-i", str(workspace / "photos"), "-o", str(first), "--size", "640x480",
         "--seed", "21", "--border", "8", "--save-project", str(project),
@@ -38,7 +38,7 @@ def test_project_reproduces_cli_output(workspace: Path) -> None:
 def test_project_folder_can_be_moved(
     workspace: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
-    project = workspace / "my.collagio.json"
+    project = workspace / "my.collagio"
     original = workspace / "original.png"
     assert main([
         "-i", str(workspace / "photos"), "-o", str(original), "--size", "320x240",
@@ -47,7 +47,7 @@ def test_project_folder_can_be_moved(
 
     moved = tmp_path_factory.mktemp("moved") / "collage"
     shutil.move(workspace, moved)
-    loaded = load_project(moved / "my.collagio.json")
+    loaded = load_project(moved / "my.collagio")
     rendered = render_project(loaded)
     with Image.open(moved / "original.png") as expected:
         assert rendered.tobytes() == expected.convert("RGB").tobytes()

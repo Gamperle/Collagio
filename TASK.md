@@ -95,7 +95,7 @@ Same renderer, no GUI. Example:
 ```
 collagio --input ./photos --mode grid --style polaroid \
              --size A4 --dpi 300 --seed 42 --output collage.pdf
-collagio --project my.collagio.json --output out.png
+collagio --project my.collagio --output out.png
 ```
 
 - Input: folder, file list, or saved project
@@ -154,7 +154,7 @@ packaging/      # PyInstaller spec, Inno Setup script, AppImage/Flatpak manifest
 
 ## 13. Project decisions
 
-- **Name:** **Collagio** (package/CLI name `collagio`, project file `*.collagio.json`).
+- **Name:** **Collagio** (package/CLI name `collagio`, project file `*.collagio`).
   Needs an app icon (SVG + PNG/ICO sizes).
 - **Licence:** open source – **GPL-3.0-or-later** (compatible with PySide6's LGPL)
 - **Output:** PNG, JPEG and PDF (with bleed) all in scope

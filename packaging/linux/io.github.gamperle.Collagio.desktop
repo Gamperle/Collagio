@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Collagio
+GenericName=Photo Collage Editor
+GenericName[de]=Fotocollagen-Editor
+Comment=Create photo collages: grids, scattered photos, postage stamps, Polaroids and more
+Comment[de]=Fotocollagen erstellen: Raster, verstreute Fotos, Briefmarken, Sofortbilder und mehr
+Exec=collagio-gui %F
+Icon=io.github.gamperle.Collagio
+Terminal=false
+Categories=Graphics;Photography;Qt;
+Keywords=collage;photo;picture;album;print;Collage;Foto;Bild;
+MimeType=application/x-collagio;image/jpeg;image/png;image/webp;image/tiff;
+StartupWMClass=collagio-gui

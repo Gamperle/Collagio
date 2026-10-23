@@ -8,11 +8,13 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from pypdf import PdfReader
-from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
+from PySide6.QtCore import QMimeData, QPoint, QPointF, QSettings, Qt, QUrl
 from PySide6.QtGui import QDropEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
+from collagio import __version__
+from collagio.app import main as gui_main
 from collagio.app.main import build_window
 from collagio.app.main_window import (
     ExportOptions,
@@ -383,11 +385,11 @@ def test_canvas_panel_custom_size_and_gradient(loaded: MainWindow) -> None:
 def test_save_open_and_recent(
     make_window: Callable[[], MainWindow], loaded: MainWindow, tmp_path: Path
 ) -> None:
-    target = tmp_path / "trip.collagio.json"
+    target = tmp_path / "trip.collagio"
     assert loaded._save_to(target)
-    assert loaded.windowTitle() == "trip.collagio.json – Collagio"
+    assert loaded.windowTitle() == "trip.collagio – Collagio"
     assert loaded.recent_files() == [str(target)]
-    assert loaded.recent_menu.actions()[0].text() == "trip.collagio.json"
+    assert loaded.recent_menu.actions()[0].text() == "trip.collagio"
 
     other = make_window()
     assert other.open_file(target)
@@ -396,14 +398,14 @@ def test_save_open_and_recent(
 
 
 def test_save_uses_existing_path(loaded: MainWindow, tmp_path: Path) -> None:
-    loaded._save_to(tmp_path / "a.collagio.json")
+    loaded._save_to(tmp_path / "a.collagio")
     loaded.document.relayout(seed=77)
     assert loaded.save()
-    assert load_project(tmp_path / "a.collagio.json").seed == 77
+    assert load_project(tmp_path / "a.collagio").seed == 77
 
 
 def test_open_broken_file_reports(window: MainWindow, tmp_path: Path, errors: list[str]) -> None:
-    broken = tmp_path / "broken.collagio.json"
+    broken = tmp_path / "broken.collagio"
     broken.write_text("{")
     assert not window.open_file(broken)
     assert "not valid JSON" in errors[0]
@@ -436,7 +438,7 @@ def test_build_window_opens_project_or_photos(
 ) -> None:
     window = build_window([str(p) for p in sample_photos[:2]], make_window())
     assert len(window.document.project.photos) == 2
-    project = tmp_path / "p.collagio.json"
+    project = tmp_path / "p.collagio"
     save_project(window.document.project, project)
     reopened = build_window([str(project)], make_window())
     assert reopened.document.path == project
@@ -646,3 +648,31 @@ def test_export_dialog_flow(
     loaded.export_job = None
     loaded.export_dialog()  # cancelled in the options dialog
     assert loaded.export_job is None
+
+
+# --- entry point -----------------------------------------------------------------------------
+
+
+def test_gui_version(capsys: pytest.CaptureFixture[str]) -> None:
+    assert gui_main.main(["collagio-gui", "--version"]) == 0
+    assert capsys.readouterr().out.strip() == f"collagio-gui {__version__}"
+
+
+def test_gui_self_test(
+    qapp: QApplication,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def settings() -> QSettings:
+        return QSettings(str(tmp_path / "s.ini"), QSettings.Format.IniFormat)
+
+    def window() -> MainWindow:
+        quiet = MainWindow(settings=settings(), cache_dir=tmp_path / "cache")
+        quiet.confirm_discard = lambda: True  # type: ignore[method-assign]
+        return quiet
+
+    monkeypatch.setattr(gui_main, "QSettings", settings)
+    monkeypatch.setattr(gui_main, "MainWindow", window)
+    assert gui_main.main(["collagio-gui", "--self-test"]) == 0
+    assert "self-test: ok" in capsys.readouterr().out
