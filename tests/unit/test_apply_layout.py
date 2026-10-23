@@ -165,9 +165,8 @@ def test_polaroid_tiles_are_taller_than_the_photo() -> None:
         ("stamp", {}, None),
         ("tape", {}, None),
         ("cutout", {}, None),
-        # Automatic film orientation fits landscape and portrait photos ...
-        ("filmstrip", {}, ["land.jpg", "port.jpg"]),
-        # ... square photos need an explicit orientation.
+        # Automatic film orientation follows the photo, so square photos fit too.
+        ("filmstrip", {}, ["land.jpg", "port.jpg", "square.jpg"]),
         ("filmstrip", {"orientation": "horizontal"}, ["square.jpg", "land.jpg"]),
         ("filmstrip", {"orientation": "vertical"}, ["square.jpg", "port.jpg"]),
     ],
@@ -188,9 +187,10 @@ def test_scattered_photos_fit_their_frames(
     for item in project.photos:
         assert item.rect is not None
         size = (round(item.rect.width), round(item.rect.height))
-        ctx = StyleContext(unit=2.0, seed=0)  # canvas short edge 2000 -> 2 px per unit
-        _, _, w, h = get.content_box(size, get.resolve(params), ctx)
         photo_w, photo_h = size_of(item.path)
+        # Canvas short edge 2000 -> 2 px per unit.
+        ctx = StyleContext(unit=2.0, seed=0, photo_aspect=photo_w / photo_h)
+        _, _, w, h = get.content_box(size, get.resolve(params), ctx)
         assert w / h == pytest.approx(photo_w / photo_h, rel=0.03)
 
 

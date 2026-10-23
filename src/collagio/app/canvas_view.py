@@ -575,8 +575,9 @@ class CanvasView(QGraphicsView):
         """The crop in effect for `photo` (explicit, or the automatic one)."""
         if photo.crop is not None:
             return photo.crop
+        width, height = self.document.size_of(photo.path)
         return fill_crop(
-            self.document.size_of(photo.path), content_aspect(self.document.project, photo)
+            (width, height), content_aspect(self.document.project, photo, width / height)
         )
 
     def _pan_crop(self, photo_id: str, start: Point, end: Point) -> None:

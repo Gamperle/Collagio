@@ -1,7 +1,9 @@
 """Film strip: a dark frame with sprocket holes along the two long edges.
 
 Proportions follow the tile, like a real negative: the sprocket bands take a
-share of the tile's short side, the holes are cut out (transparent).
+share of the tile's short side, the holes are cut out (transparent). With the
+automatic orientation, landscape and square photos get a horizontal strip and
+portrait photos a vertical one.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ SIDE_SHARE = 0.03  # frame divider at the short ends, share of the long side
 HOLE_HEIGHT = 0.42  # sprocket hole height, share of the band
 HOLE_ASPECT = 1.35  # sprocket hole width / height
 HOLE_PITCH = 1.9  # distance between hole starts, in hole widths
+SQUARE_TOLERANCE = 0.01  # photos this close to square count as square (preview rounding)
 
 
 @register
@@ -35,17 +38,22 @@ class FilmstripStyle(Style):
     }
 
     @staticmethod
-    def _bands(size: tuple[int, int], params: Mapping[str, Any]) -> tuple[bool, int, int]:
+    def _bands(
+        size: tuple[int, int], params: Mapping[str, Any], photo_aspect: float | None
+    ) -> tuple[bool, int, int]:
         """(horizontal strip?, band thickness, end divider) in pixels.
 
-        With orientation "auto" the strip runs along the tile's longer side. Nearly
-        square photos then get cropped somewhat, because the bands make a square
-        photo's tile tall when horizontal and wide when vertical; set the
-        orientation explicitly for an exact fit.
+        With orientation "auto" the photo decides: the bands make a square photo's
+        tile tall when horizontal and wide when vertical, so the tile's shape alone
+        cannot tell which orientation fits. Without a known photo shape the strip
+        runs along the tile's longer side.
         """
         width, height = size
         if params["orientation"] == "auto":
-            horizontal = width >= height
+            if photo_aspect is not None:
+                horizontal = photo_aspect >= 1 - SQUARE_TOLERANCE
+            else:
+                horizontal = width >= height
         else:
             horizontal = params["orientation"] == "horizontal"
         across, along = (height, width) if horizontal else (width, height)
@@ -57,17 +65,20 @@ class FilmstripStyle(Style):
         self, size: tuple[int, int], params: Mapping[str, Any], ctx: StyleContext
     ) -> Box:
         width, height = size
-        horizontal, band, divider = self._bands(size, params)
+        horizontal, band, divider = self._bands(size, params, ctx.photo_aspect)
         if horizontal:
             return divider, band, width - 2 * divider, height - 2 * band
         return band, divider, width - 2 * band, height - 2 * divider
 
     def holes(
-        self, size: tuple[int, int], params: Mapping[str, Any]
+        self,
+        size: tuple[int, int],
+        params: Mapping[str, Any],
+        photo_aspect: float | None = None,
     ) -> list[tuple[float, float, float, float]]:
         """Sprocket hole rectangles (left, top, right, bottom) in pixels."""
         width, height = size
-        horizontal, band, _ = self._bands(size, params)
+        horizontal, band, _ = self._bands(size, params, photo_aspect)
         long = width if horizontal else height
         hole_h = band * HOLE_HEIGHT
         hole_w = hole_h * HOLE_ASPECT
@@ -99,7 +110,7 @@ class FilmstripStyle(Style):
         tile.alpha_composite(content.convert("RGBA"), (x, y))
         cutouts = Image.new("L", size, 0)
         draw = ImageDraw.Draw(cutouts)
-        for left, top, right, bottom in self.holes(size, params):
+        for left, top, right, bottom in self.holes(size, params, ctx.photo_aspect):
             radius = (bottom - top if right - left > bottom - top else right - left) * 0.2
             draw.rounded_rectangle((left, top, right, bottom), radius=radius, fill=255)
         cutouts = cutouts.filter(ImageFilter.GaussianBlur(ANTIALIAS_RADIUS))
