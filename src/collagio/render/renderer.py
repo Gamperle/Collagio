@@ -37,7 +37,9 @@ class RenderCancelledError(Exception):
 def _pixel_box(item: PhotoItem, scale: float) -> tuple[int, int, int, int]:
     """Rect rounded per edge, so neighbouring cells keep exact gaps."""
     if item.rect is None:
-        raise RenderError(f"photo {item.id} has no position; generate a layout first")
+        raise RenderError(
+            "photo {photo_id} has no position; generate a layout first", photo_id=item.id
+        )
     left = round(item.rect.x * scale)
     top = round(item.rect.y * scale)
     right = round(item.rect.right * scale)
@@ -58,11 +60,13 @@ def add_shadow(
     The result is larger than the tile so the blurred, offset shadow fits.
     """
     if not 0.0 <= shadow.opacity <= 1.0:
-        raise RenderError(f"shadow opacity must be between 0 and 1, got {shadow.opacity}")
+        raise RenderError(
+            "shadow opacity must be between 0 and 1, got {opacity}", opacity=shadow.opacity
+        )
     if shadow.opacity == 0.0:
         return tile, (0, 0)
     if shadow.blur < 0:
-        raise RenderError(f"shadow blur must not be negative, got {shadow.blur}")
+        raise RenderError("shadow blur must not be negative, got {blur}", blur=shadow.blur)
     color = parse_color(shadow.color)
     blur = shadow.blur * unit
     offset_x, offset_y = round(shadow.offset_x * unit), round(shadow.offset_y * unit)
@@ -177,9 +181,9 @@ def render_project(
     fills it and everything else moves inwards by the same amount.
     """
     if scale <= 0:
-        raise RenderError(f"scale must be positive, got {scale}")
+        raise RenderError("scale must be positive, got {scale}", scale=scale)
     if bleed < 0:
-        raise RenderError(f"bleed must not be negative, got {bleed}")
+        raise RenderError("bleed must not be negative, got {bleed}", bleed=bleed)
     offset = round(bleed * scale)
     size = (
         max(1, round(project.canvas.width * scale)) + 2 * offset,

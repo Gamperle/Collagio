@@ -11,6 +11,7 @@
 - Fixed: the film strip's automatic orientation follows the photo, so square and nearly square photos are no longer cropped (#8)
 - Fixed: changing the style for all photos keeps manual moves, rotations, swaps and crops; only an automatic layout is laid out again (#1)
 - Fixed: *Apply layout* and *Shuffle* ask before replacing photos moved, rotated, swapped or cropped by hand (with "Don't ask again") (#2)
+- Fixed: error messages from the core are shown in the interface language (#7)
 
 ## 0.1.0 – 2026-10-23
 

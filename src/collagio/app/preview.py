@@ -16,6 +16,7 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtGui import QImage
 
 from collagio.app.qt_image import to_qimage
+from collagio.app.strings import error_message
 from collagio.core.model import PhotoItem, Project
 from collagio.errors import CollagioError
 from collagio.imaging.cache import ThumbnailCache
@@ -107,7 +108,9 @@ class PreviewRenderer(QObject):
             try:
                 tile, (left, top) = render_photo(snapshot, item, scale, self._load)
             except (CollagioError, OSError) as exc:
-                self._signals.tile.emit(TileResult(request, photo_id, QImage(), (0, 0), str(exc)))
+                self._signals.tile.emit(
+                    TileResult(request, photo_id, QImage(), (0, 0), error_message(exc))
+                )
                 return
             assert item.rect is not None  # render_photo checked it
             offset = (left / scale - item.rect.x, top / scale - item.rect.y)

@@ -42,7 +42,13 @@ from collagio.app.canvas_view import CanvasView
 from collagio.app.i18n import LANGUAGES, choose_language
 from collagio.app.panels import CanvasPanel, LayoutPanel, PhotoListPanel, StylePanel, TextPanel
 from collagio.app.preview import PreviewRenderer
-from collagio.app.strings import command_label, export_filter, image_filter, project_filter
+from collagio.app.strings import (
+    command_label,
+    error_message,
+    export_filter,
+    image_filter,
+    project_filter,
+)
 from collagio.app.workers import ExportJob
 from collagio.core.document import (
     AUTOSAVE_PREFIX,
@@ -385,7 +391,7 @@ class MainWindow(QMainWindow):
         try:
             edit()
         except (CollagioError, OSError) as exc:
-            self.show_error(str(exc))
+            self.show_error(error_message(exc))
             return False
         return True
 
@@ -461,7 +467,7 @@ class MainWindow(QMainWindow):
         try:
             document = Document.open(path)
         except (CollagioError, OSError) as exc:
-            self.show_error(str(exc))
+            self.show_error(error_message(exc))
             return False
         self.set_document(document)
         self._remember(path)
@@ -594,7 +600,7 @@ class MainWindow(QMainWindow):
                 # This window now owns the copy and deletes it when closed cleanly.
                 os.replace(chosen, self.autosave_path)
         except (CollagioError, OSError) as exc:
-            self.show_error(str(exc))
+            self.show_error(error_message(exc))
             return False
         document.undo_stack.set_dirty()
         self.set_document(document)

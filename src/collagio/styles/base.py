@@ -64,7 +64,11 @@ class Style(ABC):
         """Defaults merged with `params`; unknown or invalid parameters are rejected."""
         unknown = set(params) - set(self.defaults)
         if unknown:
-            raise StyleError(f"unknown parameter(s) for style {self.name!r}: {sorted(unknown)}")
+            raise StyleError(
+                "unknown parameter(s) for style {style!r}: {names}",
+                style=self.name,
+                names=sorted(unknown),
+            )
         resolved = dict(self.defaults)
         for key, value in params.items():
             self._check(key, value)
@@ -76,28 +80,56 @@ class Style(ABC):
         default = self.defaults[key]
         if isinstance(default, int | float) and not isinstance(default, bool):
             if isinstance(value, bool) or not isinstance(value, int | float):
-                raise StyleError(f"{self.name}.{key} must be a number, got {value!r}")
+                raise StyleError(
+                    "{style}.{key} must be a number, got {value!r}",
+                    style=self.name,
+                    key=key,
+                    value=value,
+                )
             if key not in self.ranges:
                 if value < 0:
-                    raise StyleError(f"{self.name}.{key} must not be negative, got {value!r}")
+                    raise StyleError(
+                        "{style}.{key} must not be negative, got {value!r}",
+                        style=self.name,
+                        key=key,
+                        value=value,
+                    )
                 return
             low, high = self.ranges[key]
             if not low <= value <= high:
                 raise StyleError(
-                    f"{self.name}.{key} must be between {low:g} and {high:g}, got {value!r}"
+                    "{style}.{key} must be between {low:g} and {high:g}, got {value!r}",
+                    style=self.name,
+                    key=key,
+                    low=low,
+                    high=high,
+                    value=value,
                 )
         elif isinstance(default, str):
             if not isinstance(value, str):
-                raise StyleError(f"{self.name}.{key} must be text, got {value!r}")
+                raise StyleError(
+                    "{style}.{key} must be text, got {value!r}",
+                    style=self.name,
+                    key=key,
+                    value=value,
+                )
             if key.endswith("color"):
                 try:
                     ImageColor.getrgb(value)
                 except ValueError as exc:
-                    raise StyleError(f"{self.name}.{key}: invalid colour {value!r}") from exc
+                    raise StyleError(
+                        "{style}.{key}: invalid colour {value!r}",
+                        style=self.name,
+                        key=key,
+                        value=value,
+                    ) from exc
             if key in self.choices and value not in self.choices[key]:
                 raise StyleError(
-                    f"{self.name}.{key} must be one of {', '.join(self.choices[key])}, "
-                    f"got {value!r}"
+                    "{style}.{key} must be one of {choices}, got {value!r}",
+                    style=self.name,
+                    key=key,
+                    choices=", ".join(self.choices[key]),
+                    value=value,
                 )
 
     def validate(self, params: Mapping[str, Any]) -> None:  # noqa: B027 - optional hook
@@ -123,7 +155,7 @@ _REGISTRY: dict[str, Style] = {}
 
 def register[S: type[Style]](cls: S) -> S:
     if cls.name in _REGISTRY:
-        raise StyleError(f"style {cls.name!r} is already registered")
+        raise StyleError("style {name!r} is already registered", name=cls.name)
     _REGISTRY[cls.name] = cls()
     return cls
 
@@ -133,7 +165,9 @@ def get_style(name: str) -> Style:
         return _REGISTRY[name]
     except KeyError:
         raise StyleError(
-            f"unknown style {name!r}; available: {', '.join(available_styles())}"
+            "unknown style {name!r}; available: {available}",
+            name=name,
+            available=", ".join(available_styles()),
         ) from None
 
 

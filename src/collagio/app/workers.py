@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
+from collagio.app.strings import error_message
 from collagio.core.model import Project
 from collagio.errors import CollagioError
 from collagio.render.export import export_image
@@ -60,6 +61,6 @@ class ExportJob(QRunnable):
         except RenderCancelledError:
             self.signals.cancelled.emit()
         except (CollagioError, OSError) as exc:
-            self.signals.failed.emit(str(exc))
+            self.signals.failed.emit(error_message(exc))
         else:
             self.signals.finished.emit(str(self.path))

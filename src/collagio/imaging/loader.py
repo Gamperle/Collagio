@@ -30,7 +30,7 @@ def is_supported(path: Path) -> bool:
 def find_images(folder: Path) -> list[Path]:
     """Supported photos directly inside `folder`, sorted by file name."""
     if not folder.is_dir():
-        raise ImageLoadError(f"not a folder: {folder}")
+        raise ImageLoadError("not a folder: {folder}", folder=folder)
     return sorted(
         (p for p in folder.iterdir() if p.is_file() and is_supported(p)),
         key=lambda p: p.name.lower(),
@@ -41,9 +41,9 @@ def _open(path: str | Path) -> Image.Image:
     try:
         return Image.open(path)
     except FileNotFoundError as exc:
-        raise ImageLoadError(f"photo not found: {path}") from exc
+        raise ImageLoadError("photo not found: {path}", path=path) from exc
     except (UnidentifiedImageError, OSError) as exc:
-        raise ImageLoadError(f"cannot read photo {path}: {exc}") from exc
+        raise ImageLoadError("cannot read photo {path}: {error}", path=path, error=exc) from exc
 
 
 def oriented_size(path: str | Path) -> tuple[int, int]:
@@ -75,7 +75,9 @@ def load_image(path: str | Path, max_edge: int | None = None) -> Image.Image:
             upright = ImageOps.exif_transpose(image)
             upright.load()
         except OSError as exc:
-            raise ImageLoadError(f"cannot decode photo {path}: {exc}") from exc
+            raise ImageLoadError(
+                "cannot decode photo {path}: {error}", path=path, error=exc
+            ) from exc
     upright = _normalise_mode(upright)
     if max_edge is not None and max(upright.size) > max_edge:
         upright.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)

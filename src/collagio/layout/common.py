@@ -22,8 +22,12 @@ def content_rect(
     top, bottom = margin + extra_top, margin + extra_bottom
     content = Rect(margin, top, width - 2 * margin, height - top - bottom)
     if content.width <= 0 or content.height <= 0:
-        what = f"margin {margin:g} px" + (" plus free space" if extra_top or extra_bottom else "")
-        raise LayoutError(f"{what} is too large for {width}x{height} px")
+        size = {"margin": margin, "width": width, "height": height}
+        if extra_top or extra_bottom:
+            raise LayoutError(
+                "margin {margin:g} px plus free space is too large for {width}x{height} px", **size
+            )
+        raise LayoutError("margin {margin:g} px is too large for {width}x{height} px", **size)
     return content
 
 

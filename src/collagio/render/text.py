@@ -19,7 +19,7 @@ def load_font(path: str, size_px: int) -> Font:
     try:
         return ImageFont.truetype(path, size_px)
     except OSError as exc:
-        raise RenderError(f"cannot load font {path}: {exc}") from exc
+        raise RenderError("cannot load font {path}: {error}", path=path, error=exc) from exc
 
 
 def text_size(item: TextItem, unit: float) -> tuple[int, int]:

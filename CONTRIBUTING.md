@@ -90,6 +90,11 @@ uv run python scripts/coverage_gates.py  # per-package minimums (after --cov)
 - The core (`collagio.core`, `layout`, `styles`, `render`, `imaging`) must not import Qt;
   the editor in `collagio.app` only translates user actions into `Document` calls.
 - Every edit of a project goes through an undoable command.
+- Errors shown to users derive from `CollagioError` and are raised with a literal English
+  template and keyword arguments, e.g.
+  `ImageLoadError("photo not found: {path}", path=path)`, never with an f-string: the
+  editor translates the template. List new templates in `src/collagio/app/strings.py`
+  (a test checks this).
 
 ## Translations
 

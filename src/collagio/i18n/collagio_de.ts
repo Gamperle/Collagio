@@ -182,6 +182,241 @@
     </message>
 </context>
 <context>
+    <name>Errors</name>
+    <message>
+        <source>DPI must be positive, got {dpi}</source>
+        <translation>DPI muss positiv sein, nicht {dpi}</translation>
+    </message>
+    <message>
+        <source>JPEG quality must be 1-100, got {quality}</source>
+        <translation>JPEG-Qualität muss zwischen 1 und 100 liegen, nicht {quality}</translation>
+    </message>
+    <message>
+        <source>a collage can have at most {maximum} photos ({total} requested)</source>
+        <translation>Eine Collage kann höchstens {maximum} Fotos enthalten ({total} angefordert)</translation>
+    </message>
+    <message>
+        <source>a collage needs {minimum} to {maximum} photos, got {count}</source>
+        <translation>Eine Collage braucht {minimum} bis {maximum} Fotos, nicht {count}</translation>
+    </message>
+    <message>
+        <source>background dim must be between 0 and 1, got {dim}</source>
+        <translation>Die Abdunklung des Hintergrunds muss zwischen 0 und 1 liegen, nicht {dim}</translation>
+    </message>
+    <message>
+        <source>bleed must be between 0 and {maximum:g} mm, got {bleed:g}</source>
+        <translation>Der Beschnitt muss zwischen 0 und {maximum:g} mm liegen, nicht {bleed:g}</translation>
+    </message>
+    <message>
+        <source>bleed must not be negative, got {bleed}</source>
+        <translation>Der Beschnitt darf nicht negativ sein, nicht {bleed}</translation>
+    </message>
+    <message>
+        <source>cannot decode photo {path}: {error}</source>
+        <translation>Foto {path} kann nicht dekodiert werden: {error}</translation>
+    </message>
+    <message>
+        <source>cannot fit {count} photos with a {gap:g} px gap into {width:g}x{height:g} px</source>
+        <translation>{count} Fotos mit {gap:g} px Abstand passen nicht in {width:g}×{height:g} px</translation>
+    </message>
+    <message>
+        <source>cannot load font {path}: {error}</source>
+        <translation>Schrift {path} kann nicht geladen werden: {error}</translation>
+    </message>
+    <message>
+        <source>cannot read photo {path}: {error}</source>
+        <translation>Foto {path} kann nicht gelesen werden: {error}</translation>
+    </message>
+    <message>
+        <source>cannot swap photo {photo_id!r} with itself</source>
+        <translation>Foto {photo_id!r} kann nicht mit sich selbst getauscht werden</translation>
+    </message>
+    <message>
+        <source>cannot write {path}: {error}</source>
+        <translation>{path} kann nicht geschrieben werden: {error}</translation>
+    </message>
+    <message>
+        <source>canvas size {width}x{height} px is outside 1..{maximum} px</source>
+        <translation>Die Leinwandgröße {width}×{height} px liegt außerhalb von 1 bis {maximum} px</translation>
+    </message>
+    <message>
+        <source>crop marks need PDF output (.pdf)</source>
+        <translation>Schnittmarken gibt es nur bei PDF-Ausgabe (.pdf)</translation>
+    </message>
+    <message>
+        <source>crop was not applied</source>
+        <translation>Der Zuschnitt wurde nicht angewendet</translation>
+    </message>
+    <message>
+        <source>invalid colour {value!r}</source>
+        <translation>Ungültige Farbe {value!r}</translation>
+    </message>
+    <message>
+        <source>invalid project file: {error!r}</source>
+        <translation>Ungültige Projektdatei: {error!r}</translation>
+    </message>
+    <message>
+        <source>invalid schema_version {version!r}</source>
+        <translation>Ungültige schema_version {version!r}</translation>
+    </message>
+    <message>
+        <source>invalid size {spec!r}; use WIDTHxHEIGHT, WIDTHxHEIGHTmm or one of: {presets}</source>
+        <translation>Ungültige Größe {spec!r}; verwenden Sie BREITExHÖHE, BREITExHÖHEmm oder eines von: {presets}</translation>
+    </message>
+    <message>
+        <source>margin {margin:g} px is too large for {width}x{height} px</source>
+        <translation>Rand {margin:g} px ist zu groß für {width}×{height} px</translation>
+    </message>
+    <message>
+        <source>margin {margin:g} px plus free space is too large for {width}x{height} px</source>
+        <translation>Rand {margin:g} px samt Freiraum ist zu groß für {width}×{height} px</translation>
+    </message>
+    <message>
+        <source>move was not applied</source>
+        <translation>Die Verschiebung wurde nicht angewendet</translation>
+    </message>
+    <message>
+        <source>no file name given</source>
+        <translation>Kein Dateiname angegeben</translation>
+    </message>
+    <message>
+        <source>no photo chosen for the photo background</source>
+        <translation>Für den Fotohintergrund ist kein Foto gewählt</translation>
+    </message>
+    <message>
+        <source>no photo with id {photo_id!r}</source>
+        <translation>Kein Foto mit der ID {photo_id!r}</translation>
+    </message>
+    <message>
+        <source>no text with id {text_id!r}</source>
+        <translation>Kein Text mit der ID {text_id!r}</translation>
+    </message>
+    <message>
+        <source>not a Collagio project file</source>
+        <translation>Keine Collagio-Projektdatei</translation>
+    </message>
+    <message>
+        <source>not a folder: {folder}</source>
+        <translation>Kein Ordner: {folder}</translation>
+    </message>
+    <message>
+        <source>photo aspect ratios must be positive</source>
+        <translation>Seitenverhältnisse der Fotos müssen positiv sein</translation>
+    </message>
+    <message>
+        <source>photo backgrounds need a photo loader</source>
+        <translation>Fotohintergründe brauchen einen Foto-Lader</translation>
+    </message>
+    <message>
+        <source>photo not found: {path}</source>
+        <translation>Foto nicht gefunden: {path}</translation>
+    </message>
+    <message>
+        <source>photo {photo_id} has no position; generate a layout first</source>
+        <translation>Foto {photo_id} hat keine Position; erstellen Sie zuerst ein Layout</translation>
+    </message>
+    <message>
+        <source>project was saved by a newer Collagio (schema {version}, supported {supported})</source>
+        <translation>Das Projekt wurde mit einer neueren Collagio-Version gespeichert (Schema {version}, unterstützt {supported})</translation>
+    </message>
+    <message>
+        <source>scale must be positive, got {scale}</source>
+        <translation>Der Maßstab muss positiv sein, nicht {scale}</translation>
+    </message>
+    <message>
+        <source>shadow blur must not be negative, got {blur}</source>
+        <translation>Die Schattenunschärfe darf nicht negativ sein, nicht {blur}</translation>
+    </message>
+    <message>
+        <source>shadow opacity must be between 0 and 1, got {opacity}</source>
+        <translation>Die Schattendeckkraft muss zwischen 0 und 1 liegen, nicht {opacity}</translation>
+    </message>
+    <message>
+        <source>stacking change was not applied</source>
+        <translation>Die Änderung der Reihenfolge wurde nicht angewendet</translation>
+    </message>
+    <message>
+        <source>stamp.hole_radius must be at most half of border_width</source>
+        <translation>Der Lochradius der Briefmarke darf höchstens die halbe Randbreite sein</translation>
+    </message>
+    <message>
+        <source>stamp.hole_spacing must be larger than the hole diameter</source>
+        <translation>Der Lochabstand der Briefmarke muss größer als der Lochdurchmesser sein</translation>
+    </message>
+    <message>
+        <source>style change was not applied</source>
+        <translation>Die Stiländerung wurde nicht angewendet</translation>
+    </message>
+    <message>
+        <source>style {name!r} is already registered</source>
+        <translation>Stil {name!r} ist bereits registriert</translation>
+    </message>
+    <message>
+        <source>swap was not applied</source>
+        <translation>Der Tausch wurde nicht angewendet</translation>
+    </message>
+    <message>
+        <source>torn.sides must be 'all' or a list of {sides}, got {value!r}</source>
+        <translation>torn.sides muss 'all' oder eine Liste aus {sides} sein, nicht {value!r}</translation>
+    </message>
+    <message>
+        <source>unknown parameter(s) for style {style!r}: {names}</source>
+        <translation>Unbekannte Parameter für Stil {style!r}: {names}</translation>
+    </message>
+    <message>
+        <source>unknown style {name!r}; available: {available}</source>
+        <translation>Unbekannter Stil {name!r}; verfügbar: {available}</translation>
+    </message>
+    <message>
+        <source>unknown text field {name!r}</source>
+        <translation>Unbekanntes Textfeld {name!r}</translation>
+    </message>
+    <message>
+        <source>unknown texture {name!r}; available: {available}</source>
+        <translation>Unbekannte Textur {name!r}; verfügbar: {available}</translation>
+    </message>
+    <message>
+        <source>unsupported layout mode {mode}</source>
+        <translation>Nicht unterstützter Layout-Modus {mode}</translation>
+    </message>
+    <message>
+        <source>unsupported output format {suffix!r}; use .png, .jpg, .jpeg or .pdf</source>
+        <translation>Nicht unterstütztes Ausgabeformat {suffix!r}; verwenden Sie .png, .jpg, .jpeg oder .pdf</translation>
+    </message>
+    <message>
+        <source>{label!r} was not applied</source>
+        <translation>{label!r} wurde nicht angewendet</translation>
+    </message>
+    <message>
+        <source>{path}: not valid JSON ({error})</source>
+        <translation>{path}: kein gültiges JSON ({error})</translation>
+    </message>
+    <message>
+        <source>{style}.{key} must be a number, got {value!r}</source>
+        <translation>{style}.{key} muss eine Zahl sein, nicht {value!r}</translation>
+    </message>
+    <message>
+        <source>{style}.{key} must be between {low:g} and {high:g}, got {value!r}</source>
+        <translation>{style}.{key} muss zwischen {low:g} und {high:g} liegen, nicht {value!r}</translation>
+    </message>
+    <message>
+        <source>{style}.{key} must be one of {choices}, got {value!r}</source>
+        <translation>{style}.{key} muss eines von {choices} sein, nicht {value!r}</translation>
+    </message>
+    <message>
+        <source>{style}.{key} must be text, got {value!r}</source>
+        <translation>{style}.{key} muss ein Text sein, nicht {value!r}</translation>
+    </message>
+    <message>
+        <source>{style}.{key} must not be negative, got {value!r}</source>
+        <translation>{style}.{key} darf nicht negativ sein, nicht {value!r}</translation>
+    </message>
+    <message>
+        <source>{style}.{key}: invalid colour {value!r}</source>
+        <translation>{style}.{key}: ungültige Farbe {value!r}</translation>
+    </message>
+</context>
+<context>
     <name>ExportOptionsDialog</name>
     <message>
         <source>Export options</source>

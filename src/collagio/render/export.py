@@ -33,7 +33,8 @@ def format_for_path(path: Path) -> ExportFormat:
         return _SUFFIXES[path.suffix.lower()]
     except KeyError:
         raise ExportError(
-            f"unsupported output format {path.suffix or '(none)'!r}; use .png, .jpg, .jpeg or .pdf"
+            "unsupported output format {suffix!r}; use .png, .jpg, .jpeg or .pdf",
+            suffix=path.suffix or "(none)",
         ) from None
 
 
@@ -55,9 +56,13 @@ def export_image(
     """
     fmt = format_for_path(path)
     if not 1 <= quality <= 100:
-        raise ExportError(f"JPEG quality must be 1-100, got {quality}")
+        raise ExportError("JPEG quality must be 1-100, got {quality}", quality=quality)
     if not 0 <= bleed_mm <= MAX_BLEED_MM:
-        raise ExportError(f"bleed must be between 0 and {MAX_BLEED_MM:g} mm, got {bleed_mm:g}")
+        raise ExportError(
+            "bleed must be between 0 and {maximum:g} mm, got {bleed:g}",
+            maximum=MAX_BLEED_MM,
+            bleed=bleed_mm,
+        )
     if crop_marks and fmt is not ExportFormat.PDF:
         raise ExportError("crop marks need PDF output (.pdf)")
 
@@ -83,5 +88,5 @@ def export_image(
             )
             write_pdf(image, geometry, path, quality=quality, title=path.stem)
     except OSError as exc:
-        raise ExportError(f"cannot write {path}: {exc}") from exc
+        raise ExportError("cannot write {path}: {error}", path=path, error=exc) from exc
     return path
