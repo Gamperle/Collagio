@@ -7,6 +7,7 @@ only translates user actions into these calls and listens for changes.
 from __future__ import annotations
 
 import copy
+import math
 import time
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
@@ -20,10 +21,12 @@ from collagio.core.commands import (
     SetPlacement,
     SwapPhotos,
 )
+from collagio.core.geometry import centre, refit_crop
 from collagio.core.model import (
     MAX_PHOTOS,
     Canvas,
     CropBox,
+    LayoutMode,
     LayoutSettings,
     PhotoItem,
     Project,
@@ -41,8 +44,9 @@ from collagio.core.serialize import (
 from collagio.core.undo import UndoStack
 from collagio.errors import EditError
 from collagio.imaging.loader import oriented_size
-from collagio.layout.apply import SizeOf, apply_layout
+from collagio.layout.apply import SizeOf, apply_layout, framed_aspect
 from collagio.render.background import parse_color
+from collagio.render.renderer import content_aspect
 from collagio.render.text import text_size
 
 Listener = Callable[[], None]
@@ -165,8 +169,10 @@ class Document:
     def _edit(self, label: str, mutate: Callable[[Project], None], relayout: bool) -> None:
         def run(project: Project) -> None:
             mutate(project)
-            if relayout and project.photos:
-                apply_layout(project, self.size_of)
+            if relayout:
+                if project.photos:
+                    apply_layout(project, self.size_of)
+                project.layout_edited = False
 
         self.execute(EditProject(label, run))
 
@@ -194,12 +200,42 @@ class Document:
         self._edit("Change canvas", change, relayout=False)
 
     def set_default_style(self, style: StyleRef) -> None:
-        """Style for all photos without their own style; tiles are re-fitted to the frame."""
-        self._edit(
-            "Change style",
-            lambda p: setattr(p, "default_style", copy.deepcopy(style)),
-            relayout=True,
-        )
+        """Style for all photos without their own style; tiles are re-fitted to the frame.
+
+        An automatic layout is laid out again. Manual changes are kept: see `_refit`.
+        """
+
+        def change(project: Project) -> None:
+            project.default_style = copy.deepcopy(style)
+            if project.layout_edited:
+                self._refit(project, [p for p in project.photos if p.style is None])
+            elif project.photos:
+                apply_layout(project, self.size_of)
+
+        self._edit("Change style", change, relayout=False)
+
+    def _refit(self, project: Project, photos: Iterable[PhotoItem]) -> None:
+        """Fit tiles to a changed frame without moving them.
+
+        Scattered tiles take the frame's shape around their centre, keeping their
+        area and rotation; grid tiles keep their cells. Chosen crops get the shape
+        of the new photo area, so the photo is not stretched.
+        """
+        for item in photos:
+            if item.rect is None:
+                continue
+            width, height = self.size_of(item.path)
+            if project.layout.mode is LayoutMode.SCATTERED:
+                rect = item.rect
+                area = rect.width * rect.height
+                aspect = framed_aspect(project, item, width / height, area)
+                new_w = math.sqrt(area * aspect)
+                new_h = area / new_w
+                cx, cy = centre(rect)
+                item.rect = Rect(cx - new_w / 2, cy - new_h / 2, new_w, new_h)
+            if item.crop is not None:
+                frame = content_aspect(project, item, width / height)
+                item.crop = refit_crop(item.crop, (width, height), frame)
 
     def set_photo_styles(self, photo_ids: Iterable[str], style: StyleRef | None) -> None:
         """Own style for some photos (None: back to the default), positions unchanged."""

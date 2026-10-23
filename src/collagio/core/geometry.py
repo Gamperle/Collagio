@@ -119,6 +119,29 @@ def zoom_crop(crop: CropBox, factor: float, anchor: Point = (0.5, 0.5)) -> CropB
     )
 
 
+def refit_crop(crop: CropBox, source_size: tuple[int, int], aspect: float) -> CropBox:
+    """The crop reshaped to `aspect` (in pixels), keeping its centre and about its area.
+
+    For a frame whose shape changed: the chosen part of the photo stays in view
+    without being stretched.
+    """
+    if aspect <= 0:
+        raise ValueError(f"aspect must be positive, got {aspect}")
+    source_w, source_h = source_size
+    area = crop.width * source_w * crop.height * source_h
+    width = math.sqrt(area * aspect)
+    height = width / aspect
+    fit = min(1.0, source_w / width, source_h / height)  # must stay inside the photo
+    width, height = width * fit / source_w, height * fit / source_h
+    cx, cy = crop.x + crop.width / 2, crop.y + crop.height / 2
+    return CropBox(
+        min(max(cx - width / 2, 0.0), 1.0 - width),
+        min(max(cy - height / 2, 0.0), 1.0 - height),
+        width,
+        height,
+    )
+
+
 def contains(rect: Rect, rotation: float, point: Point) -> bool:
     """True if `point` lies on the rotated rectangle."""
     x, y = to_local(point, centre(rect), rotation)

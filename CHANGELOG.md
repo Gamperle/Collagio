@@ -9,6 +9,7 @@
 - Fixed: opening a project with many missing photos shows one summary message instead of one per photo; missing photos are shown as placeholders (#4)
 - Fixed: several editor windows no longer overwrite each other's autosave; *Recover unsaved work* lets you choose between sessions, and copies older than 30 days are removed (#3)
 - Fixed: the film strip's automatic orientation follows the photo, so square and nearly square photos are no longer cropped (#8)
+- Fixed: changing the style for all photos keeps manual moves, rotations, swaps and crops; only an automatic layout is laid out again (#1)
 
 ## 0.1.0 – 2026-10-23
 

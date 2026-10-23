@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ from collagio.core.document import (
     new_project,
     remove_old_autosaves,
 )
+from collagio.core.geometry import centre
 from collagio.core.model import (
     Background,
     Canvas,
@@ -27,6 +29,7 @@ from collagio.core.model import (
 )
 from collagio.core.serialize import load_project
 from collagio.errors import EditError, ImageLoadError, LayoutError
+from collagio.render.renderer import content_aspect
 
 SIZES = {"land.jpg": (600, 400), "port.jpg": (400, 600), "square.jpg": (500, 500)}
 
@@ -150,6 +153,77 @@ def test_default_style_refits_tiles() -> None:
     doc.set_default_style(StyleRef("polaroid"))
     assert doc.project.default_style == StyleRef("polaroid")
     assert doc.project.photos[0].rect != land
+
+
+def _scattered(count: int = 4) -> Document:
+    doc = _document(count)
+    doc.relayout(LayoutSettings(mode=LayoutMode.SCATTERED, max_rotation=10), seed=5)
+    return doc
+
+
+def test_manual_edits_mark_the_layout_and_undo_restores_the_mark() -> None:
+    doc = _document(3)
+    assert not doc.project.layout_edited
+    first = doc.project.photos[0]
+    assert first.rect is not None
+    edits = [
+        lambda: doc.move_photo("p001", Rect(1, 2, first.rect.width, first.rect.height), 5, "Move"),
+        lambda: doc.crop_photo("p002", CropBox(0.1, 0.1, 0.5, 0.5)),
+        lambda: doc.swap_photos("p001", "p003"),
+        lambda: doc.restack("p001", to_front=False),
+        lambda: doc.move_photos(
+            {"p001": (Rect(5, 5, 50, 50), 0), "p002": (Rect(9, 9, 50, 50), 0)}, "Move"
+        ),
+    ]
+    for edit in edits:
+        edit()
+        assert doc.project.layout_edited
+        doc.undo()
+        assert not doc.project.layout_edited
+        doc.redo()
+        doc.relayout()
+        assert not doc.project.layout_edited
+
+
+def test_default_style_keeps_manual_edits_in_scattered_mode() -> None:
+    doc = _scattered()
+    first = doc.project.photos[0]
+    assert first.rect is not None
+    moved = Rect(100, 150, first.rect.width, first.rect.height)
+    doc.move_photo("p001", moved, 20.0, "Move photo")
+    doc.crop_photo("p002", CropBox(0.3, 0.3, 0.4, 0.4))  # a zoomed-in part
+    own = doc.project.photos[2]
+    doc.set_photo_styles([own.id], StyleRef("stamp"))
+    own_rect = doc.project.photos[2].rect
+    before = copy.deepcopy(doc.project)
+
+    doc.set_default_style(StyleRef("polaroid"))
+    after = doc.project
+    assert after.default_style == StyleRef("polaroid")
+    assert after.layout_edited
+    rect = after.photos[0].rect
+    assert rect is not None
+    assert centre(rect) == pytest.approx(centre(moved))
+    assert rect.width * rect.height == pytest.approx(moved.width * moved.height)
+    assert rect.aspect < moved.aspect  # a Polaroid's wide bottom edge
+    assert after.photos[0].rotation == 20.0
+    crop = after.photos[1].crop
+    assert crop is not None
+    assert (crop.x + crop.width / 2, crop.y + crop.height / 2) == pytest.approx((0.5, 0.5))
+    width, height = SIZES[Path(after.photos[1].path).name]
+    frame = content_aspect(after, after.photos[1], width / height)
+    assert crop.width * width / (crop.height * height) == pytest.approx(frame)
+    assert after.photos[2].rect == own_rect  # has its own style
+    doc.undo()
+    assert doc.project == before
+
+
+def test_default_style_keeps_grid_cells_with_manual_edits() -> None:
+    doc = _document(3)
+    doc.swap_photos("p001", "p002")
+    rects = [p.rect for p in doc.project.photos]
+    doc.set_default_style(StyleRef("polaroid"))
+    assert [p.rect for p in doc.project.photos] == rects
 
 
 def test_photo_styles_keep_positions_and_are_one_step() -> None:

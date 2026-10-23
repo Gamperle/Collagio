@@ -33,6 +33,20 @@ class MergeableCommand(Command, Protocol):
         ...
 
 
+@dataclass
+class _ManualEdit:
+    """Marks the layout as edited by hand; `revert` restores the previous mark."""
+
+    _was_edited: bool = field(default=False, repr=False, kw_only=True)
+
+    def _mark_edited(self, project: Project) -> None:
+        self._was_edited = project.layout_edited
+        project.layout_edited = True
+
+    def _restore_mark(self, project: Project) -> None:
+        project.layout_edited = self._was_edited
+
+
 def find_photo(project: Project, photo_id: str) -> PhotoItem:
     for item in project.photos:
         if item.id == photo_id:
@@ -52,7 +66,7 @@ def _set_placement(item: PhotoItem, placement: _Placement) -> None:
 
 
 @dataclass
-class SwapPhotos:
+class SwapPhotos(_ManualEdit):
     """Exchange the positions of two photos (cell, rotation, stacking order).
 
     Each photo keeps its own style. Crops are reset to automatic, because a crop
@@ -70,6 +84,7 @@ class SwapPhotos:
         first = find_photo(project, self.first_id)
         second = find_photo(project, self.second_id)
         self._before = [_placement(first), _placement(second)]
+        self._mark_edited(project)
         first.rect, second.rect = second.rect, first.rect
         first.rotation, second.rotation = second.rotation, first.rotation
         first.z, second.z = second.z, first.z
@@ -80,6 +95,7 @@ class SwapPhotos:
             raise EditError("swap was not applied")
         _set_placement(find_photo(project, self.first_id), self._before[0])
         _set_placement(find_photo(project, self.second_id), self._before[1])
+        self._restore_mark(project)
         self._before = []
 
 
@@ -145,7 +161,7 @@ class EditProject:
 
 
 @dataclass
-class SetPlacement:
+class SetPlacement(_ManualEdit):
     """Move, resize and/or rotate one photo (the result of one drag)."""
 
     photo_id: str
@@ -157,6 +173,7 @@ class SetPlacement:
     def apply(self, project: Project) -> None:
         item = find_photo(project, self.photo_id)
         self._before = [_placement(item)]
+        self._mark_edited(project)
         item.rect = copy.deepcopy(self.rect)
         item.rotation = self.rotation
 
@@ -164,11 +181,12 @@ class SetPlacement:
         if not self._before:
             raise EditError("move was not applied")
         _set_placement(find_photo(project, self.photo_id), self._before[0])
+        self._restore_mark(project)
         self._before = []
 
 
 @dataclass
-class SetCrop:
+class SetCrop(_ManualEdit):
     """Choose the visible part of a photo, or `None` for the automatic crop."""
 
     photo_id: str
@@ -179,12 +197,14 @@ class SetCrop:
     def apply(self, project: Project) -> None:
         item = find_photo(project, self.photo_id)
         self._before = [copy.deepcopy(item.crop)]
+        self._mark_edited(project)
         item.crop = copy.deepcopy(self.crop)
 
     def revert(self, project: Project) -> None:
         if not self._before:
             raise EditError("crop was not applied")
         find_photo(project, self.photo_id).crop = self._before[0]
+        self._restore_mark(project)
         self._before = []
 
     def merge_with(self, other: Command) -> bool:
@@ -196,7 +216,7 @@ class SetCrop:
 
 
 @dataclass
-class Restack:
+class Restack(_ManualEdit):
     """Bring a photo to the front (`to_front`) or send it to the back.
 
     Stacking orders are renumbered 0..n-1 afterwards.
@@ -210,6 +230,7 @@ class Restack:
     def apply(self, project: Project) -> None:
         item = find_photo(project, self.photo_id)
         self._before = [p.z for p in project.photos]
+        self._mark_edited(project)
         others = sorted((p for p in project.photos if p is not item), key=lambda p: p.z)
         ordered = [*others, item] if self.to_front else [item, *others]
         for z, photo in enumerate(ordered):
@@ -220,4 +241,5 @@ class Restack:
             raise EditError("stacking change was not applied")
         for photo, z in zip(project.photos, self._before, strict=True):
             photo.z = z
+        self._restore_mark(project)
         self._before = []

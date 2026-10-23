@@ -12,6 +12,7 @@ from collagio.core.geometry import (
     centre,
     normalise_angle,
     pan_crop,
+    refit_crop,
     resize_from_corner,
     rotate_by_drag,
     screen_angle,
@@ -162,3 +163,22 @@ def test_photo_at_picks_topmost() -> None:
     assert photo_at(photos, (75, 75)) is above
     assert photo_at(photos, (25, 25)) is below
     assert photo_at(photos, (500, 500)) is None
+
+
+def test_refit_crop_keeps_centre_and_area() -> None:
+    crop = CropBox(0.2, 0.3, 0.4, 0.4)  # square part of a square photo
+    wide = refit_crop(crop, (1000, 1000), 2.0)
+    assert wide.width / wide.height == pytest.approx(2.0)
+    assert wide.width * wide.height == pytest.approx(0.16)
+    assert (wide.x + wide.width / 2, wide.y + wide.height / 2) == pytest.approx((0.4, 0.5))
+
+
+def test_refit_crop_stays_inside_the_photo() -> None:
+    full = refit_crop(CropBox(0.0, 0.0, 1.0, 1.0), (600, 400), 1.0)
+    assert (full.width, full.height) == pytest.approx((400 / 600, 1.0))
+    assert full.x == pytest.approx((1 - 400 / 600) / 2)
+    edge = refit_crop(CropBox(0.8, 0.0, 0.2, 0.2), (1000, 1000), 0.5)
+    assert edge.x + edge.width <= 1.0 + 1e-9
+    assert edge.y >= 0.0
+    with pytest.raises(ValueError, match="positive"):
+        refit_crop(full, (600, 400), 0)
