@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QLocale, Qt, Signal
+from PySide6.QtCore import QLocale, QSettings, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QDragEnterEvent,
@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QRadioButton,
@@ -308,12 +309,21 @@ class PhotoListPanel(QWidget):
 # --- layout --------------------------------------------------------------------------------------
 
 
+ASK_REPLACE_EDITS = "ask_before_replacing_edits"  # setting
+
+
 class LayoutPanel(QWidget):
     error = Signal(str)
 
-    def __init__(self, document: Document, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        document: Document,
+        settings: QSettings | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.document = document
+        self.app_settings = settings if settings is not None else QSettings()
         self.mode = QComboBox()
         self.mode.addItem(self.tr("Grid"), LayoutMode.GRID)
         self.mode.addItem(self.tr("Scattered"), LayoutMode.SCATTERED)
@@ -407,15 +417,52 @@ class LayoutPanel(QWidget):
             space_bottom=self.space_bottom.value() / 100,
         )
 
-    def apply(self) -> None:
+    def apply(self) -> bool:
+        """Lay the photos out again; False if cancelled or failed."""
+        if not self.confirm_replace():
+            return False
         try:
             self.document.relayout(self.settings(), self.seed.value())
         except CollagioError as exc:
             self.error.emit(str(exc))
+            return False
+        return True
 
     def shuffle(self) -> None:
+        previous = self.seed.value()
         self.seed.setValue(random.randrange(MAX_SEED + 1))
-        self.apply()
+        if not self.apply():
+            self.seed.setValue(previous)
+
+    def confirm_replace(self) -> bool:
+        """Ask before a new layout replaces changes made by hand; True means go ahead."""
+        if not self.document.project.layout_edited:
+            return True
+        if not self.app_settings.value(ASK_REPLACE_EDITS, True, type=bool):
+            return True
+        go_ahead, dont_ask = self.ask_replace()
+        if go_ahead and dont_ask:
+            self.app_settings.setValue(ASK_REPLACE_EDITS, False)
+        return go_ahead
+
+    def ask_replace(self) -> tuple[bool, bool]:
+        """The question itself: (replace?, don't ask again?)."""
+        box = QMessageBox(
+            QMessageBox.Icon.Question,
+            self.tr("Replace manual changes?"),
+            self.tr(
+                "The new layout replaces the photos you moved, resized, rotated, swapped "
+                "or cropped by hand. Undo brings them back."
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            self,
+        )
+        box.button(QMessageBox.StandardButton.Yes).setText(self.tr("Replace"))
+        box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        dont_ask = QCheckBox(self.tr("Don't ask again"))  # keep a reference for PySide
+        box.setCheckBox(dont_ask)
+        go_ahead = box.exec() == QMessageBox.StandardButton.Yes
+        return go_ahead, dont_ask.isChecked()
 
 
 # --- style ---------------------------------------------------------------------------------------
