@@ -2,8 +2,8 @@
 
 Desktop photo collage creator for Windows and Linux.
 
-> **Status:** early development. Phases 1-2 are done: grid and scattered collages from the
-> command line.
+> **Status:** early development. Phases 1-3 are done: grid and scattered collages with all
+> seven styles from the command line. The desktop GUI follows in Phase 4.
 > The desktop GUI follows in Phase 4.
 
 ## Planned features
@@ -28,6 +28,8 @@ collagio -i ./photos -o collage.png --size A4 --dpi 300 --seed 42
 collagio -i a.jpg b.jpg c.jpg -o out.jpg --size fullhd --border 8 --corner-radius 12 \
          --background "#f4f1ea" --save-project my.collagio.json
 collagio -i ./photos -o scattered.jpg --mode scattered --rotation 15 --overlap 0.7
+collagio -i ./photos -o mixed.jpg --mode scattered --mix stamp,polaroid,tape,torn
+collagio -i ./photos -o out.png --style polaroid --style-param "caption=Summer 2026"
 collagio --project my.collagio.json -o out.png      # re-render a saved project
 collagio --help                                     # all options
 ```
@@ -46,7 +48,13 @@ collagio --help                                     # all options
   photo that stays uncovered, default 0.5; guaranteed)
 - **Shadow:** `--shadow OPACITY` (default 0.45 in scattered mode, off in grid mode),
   `--shadow-blur`
-- **Style:** `--border`, `--corner-radius` in 1/1000 of the canvas short edge, `--border-color`
+- **Styles:** `--style plain|stamp|cutout|torn|polaroid|tape|filmstrip` for all photos;
+  `--style-param KEY=VALUE` for any style parameter (e.g. `caption=Summer`, `value=60c`,
+  `variant=corners`, `sides=top,bottom`, `orientation=vertical`); `--mix stamp,polaroid,...`
+  gives each photo a random style from the list; `--photo-style 3=torn` sets one photo's style.
+  Tiles are shaped for photo + frame, so frames do not crop the photo.
+- **Plain style shortcuts:** `--border`, `--corner-radius` in 1/1000 of the canvas short edge,
+  `--border-color`
 - **Background:** one colour, or two comma-separated colours for a gradient
 
 ## Development

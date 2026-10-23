@@ -11,7 +11,7 @@ import copy
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from collagio.core.model import CropBox, PhotoItem, Project, Rect
+from collagio.core.model import CropBox, PhotoItem, Project, Rect, StyleRef
 from collagio.errors import EditError
 
 
@@ -70,4 +70,25 @@ class SwapPhotos:
             raise EditError("swap was not applied")
         _set_placement(find_photo(project, self.first_id), self._before[0])
         _set_placement(find_photo(project, self.second_id), self._before[1])
+        self._before = []
+
+
+@dataclass
+class SetPhotoStyle:
+    """Give one photo its own style, or `None` to use the project default again."""
+
+    photo_id: str
+    style: StyleRef | None
+    label: str = "Change style"
+    _before: list[StyleRef | None] = field(default_factory=list, repr=False)
+
+    def apply(self, project: Project) -> None:
+        item = find_photo(project, self.photo_id)
+        self._before = [copy.deepcopy(item.style)]
+        item.style = copy.deepcopy(self.style)
+
+    def revert(self, project: Project) -> None:
+        if not self._before:
+            raise EditError("style change was not applied")
+        find_photo(project, self.photo_id).style = self._before[0]
         self._before = []

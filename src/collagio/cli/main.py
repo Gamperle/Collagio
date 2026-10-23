@@ -5,6 +5,8 @@ Examples:
     collagio -i a.jpg b.jpg c.jpg -o out.jpg --size fullhd --border 8 \\
              --save-project my.collagio.json
     collagio -i ./photos -o scattered.jpg --mode scattered --rotation 15 --overlap 0.5
+    collagio -i ./photos -o mixed.jpg --mix stamp,polaroid,tape --photo-style 1=torn
+    collagio -i ./photos -o out.png --style polaroid --style-param "caption=Summer 2026"
     collagio --project my.collagio.json -o out.png --swap 1,4
 """
 
@@ -17,7 +19,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from collagio import __version__
-from collagio.core.commands import SwapPhotos
+from collagio.core.commands import SetPhotoStyle, SwapPhotos
 from collagio.core.model import (
     Background,
     BackgroundKind,
@@ -29,11 +31,12 @@ from collagio.core.model import (
     Shadow,
     StyleRef,
 )
+from collagio.core.rng import derive_rng
 from collagio.core.serialize import load_project, save_project
 from collagio.core.units import PAPER_SIZES_MM, PIXEL_PRESETS, Orientation, parse_size
 from collagio.errors import CollagioError
 from collagio.imaging.loader import find_images, is_supported
-from collagio.layout.apply import build_project
+from collagio.layout.apply import apply_layout, build_project
 from collagio.render.background import parse_color
 from collagio.render.export import export_image, format_for_path
 from collagio.styles import available_styles, get_style
@@ -81,6 +84,31 @@ def _swap_pair(value: str) -> tuple[str, str]:
     if len(parts) != 2 or not all(parts):
         raise argparse.ArgumentTypeError(f"expected two photos separated by a comma, got {value!r}")
     return parts[0], parts[1]
+
+
+def _key_value(value: str) -> tuple[str, str]:
+    key, sep, rest = value.partition("=")
+    if not sep or not key.strip():
+        raise argparse.ArgumentTypeError(f"expected KEY=VALUE, got {value!r}")
+    return key.strip(), rest
+
+
+def _style_list(value: str) -> list[str]:
+    names = [name.strip() for name in value.split(",") if name.strip()]
+    unknown = [name for name in names if name not in available_styles()]
+    if not names or unknown:
+        raise argparse.ArgumentTypeError(
+            f"expected style names from {', '.join(available_styles())}, got {value!r}"
+        )
+    return names
+
+
+def _param_value(text: str) -> float | str:
+    """Numbers become numbers, anything else stays text."""
+    try:
+        return float(text)
+    except ValueError:
+        return text
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -199,10 +227,34 @@ def build_parser() -> argparse.ArgumentParser:
     shadow.add_argument("--shadow-blur", type=_non_negative, default=6.0, help="default 6")
 
     style = parser.add_argument_group("style")
-    style.add_argument("--style", choices=available_styles(), default="plain")
-    style.add_argument("--border", type=float, help="border width")
-    style.add_argument("--border-color", help="border colour")
-    style.add_argument("--corner-radius", type=float, help="corner radius")
+    style.add_argument(
+        "--style", choices=available_styles(), default="plain", help="style for all photos"
+    )
+    style.add_argument("--border", type=float, help="border width (shortcut for border_width)")
+    style.add_argument("--border-color", help="border colour (plain style)")
+    style.add_argument("--corner-radius", type=float, help="corner radius (plain style)")
+    style.add_argument(
+        "--style-param",
+        action="append",
+        default=[],
+        type=_key_value,
+        metavar="KEY=VALUE",
+        help="any parameter of --style, e.g. caption=Summer or value=60c; repeatable",
+    )
+    style.add_argument(
+        "--mix",
+        type=_style_list,
+        metavar="STYLE,STYLE,...",
+        help="give every photo a random style from this list (by the seed)",
+    )
+    style.add_argument(
+        "--photo-style",
+        action="append",
+        default=[],
+        type=_key_value,
+        metavar="PHOTO=STYLE",
+        help="style for one photo, by number (1, 2, ...) or id (p001); repeatable",
+    )
     return parser
 
 
@@ -238,7 +290,8 @@ def _style(args: argparse.Namespace) -> StyleRef:
         "border_color": args.border_color,
         "corner_radius": args.corner_radius,
     }
-    params = {key: value for key, value in options.items() if value is not None}
+    params: dict[str, object] = {key: value for key, value in options.items() if value is not None}
+    params.update((key, _param_value(value)) for key, value in args.style_param)
     style = StyleRef(name=args.style, params=params)
     get_style(style.name).resolve(style.params)  # validate early
     return style
@@ -284,6 +337,16 @@ def _photo_id(project: Project, token: str) -> str:
     return token
 
 
+def _assign_styles(project: Project, args: argparse.Namespace) -> None:
+    if args.mix:
+        rng = derive_rng(project.seed, "mix")
+        for item in project.photos:
+            SetPhotoStyle(item.id, StyleRef(rng.choice(args.mix))).apply(project)
+    for photo, style_name in args.photo_style:
+        get_style(style_name)  # unknown names fail with the list of styles
+        SetPhotoStyle(_photo_id(project, photo), StyleRef(style_name)).apply(project)
+
+
 def run(args: argparse.Namespace) -> int:
     format_for_path(args.output)  # fail before the (slow) rendering
     if args.project is not None:
@@ -292,6 +355,10 @@ def run(args: argparse.Namespace) -> int:
         if args.seed is None:
             args.seed = random.SystemRandom().randrange(1_000_000)
         project = _new_project(args)
+    if args.mix or args.photo_style:
+        _assign_styles(project, args)
+        if args.project is None:
+            apply_layout(project)  # lay out again so every tile fits its frame
     for first, second in args.swap:
         SwapPhotos(_photo_id(project, first), _photo_id(project, second)).apply(project)
     export_image(project, args.output, quality=args.quality)

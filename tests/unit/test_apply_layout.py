@@ -5,10 +5,19 @@ from typing import Any
 
 import pytest
 
-from collagio.core.model import Canvas, CropBox, LayoutMode, LayoutSettings, Rect, StyleRef
+from collagio.core.model import (
+    Canvas,
+    CropBox,
+    LayoutMode,
+    LayoutSettings,
+    Project,
+    Rect,
+    StyleRef,
+)
 from collagio.errors import LayoutError
 from collagio.layout import apply as apply_module
-from collagio.layout.apply import apply_layout, build_project
+from collagio.layout.apply import apply_layout, build_project, framed_aspect
+from collagio.styles import StyleContext, get_style
 
 SIZES = {"land.jpg": (600, 400), "port.jpg": (400, 600), "square.jpg": (500, 500)}
 
@@ -122,3 +131,73 @@ def test_switching_mode_resets_rotation() -> None:
     apply_layout(project, size_of)
     assert all(p.rotation == 0 for p in project.photos)
     assert [p.z for p in project.photos] == list(range(len(names)))
+
+
+# --- tiles shaped for photo + frame ---------------------------------------------------------
+
+
+def _project_with(style: StyleRef, mode: LayoutMode = LayoutMode.SCATTERED) -> Project:
+    names = list(SIZES) * 2
+    return build_project(
+        names,
+        Canvas(3000, 2000),
+        layout=LayoutSettings(mode=mode, max_rotation=0),
+        default_style=style,
+        seed=4,
+        size_of=size_of,
+    )
+
+
+def test_framed_aspect_without_frame_is_the_photo_aspect() -> None:
+    project = _project_with(StyleRef())
+    assert framed_aspect(project, project.photos[0], 1.5, 500_000) == pytest.approx(1.5)
+
+
+def test_polaroid_tiles_are_taller_than_the_photo() -> None:
+    project = _project_with(StyleRef("polaroid"))
+    assert framed_aspect(project, project.photos[0], 1.5, 500_000) < 1.4
+
+
+@pytest.mark.parametrize(
+    ("style", "params", "names"),
+    [
+        ("polaroid", {}, None),
+        ("stamp", {}, None),
+        ("tape", {}, None),
+        ("cutout", {}, None),
+        # Automatic film orientation fits landscape and portrait photos ...
+        ("filmstrip", {}, ["land.jpg", "port.jpg"]),
+        # ... square photos need an explicit orientation.
+        ("filmstrip", {"orientation": "horizontal"}, ["square.jpg", "land.jpg"]),
+        ("filmstrip", {"orientation": "vertical"}, ["square.jpg", "port.jpg"]),
+    ],
+)
+def test_scattered_photos_fit_their_frames(
+    style: str, params: dict[str, Any], names: list[str] | None
+) -> None:
+    """The style's photo area has (nearly) the photo's shape: little cropping."""
+    project = build_project(
+        (names or list(SIZES)) * 2,
+        Canvas(3000, 2000),
+        layout=LayoutSettings(mode=LayoutMode.SCATTERED, max_rotation=0),
+        default_style=StyleRef(style, params),
+        seed=4,
+        size_of=size_of,
+    )
+    get = get_style(style)
+    for item in project.photos:
+        assert item.rect is not None
+        size = (round(item.rect.width), round(item.rect.height))
+        ctx = StyleContext(unit=2.0, seed=0)  # canvas short edge 2000 -> 2 px per unit
+        _, _, w, h = get.content_box(size, get.resolve(params), ctx)
+        photo_w, photo_h = size_of(item.path)
+        assert w / h == pytest.approx(photo_w / photo_h, rel=0.03)
+
+
+def test_per_photo_styles_shape_their_own_tiles() -> None:
+    project = _project_with(StyleRef())
+    project.photos[0].style = StyleRef("polaroid")
+    apply_layout(project, size_of)
+    first, second = project.photos[0].rect, project.photos[3].rect  # both land.jpg
+    assert first is not None and second is not None
+    assert first.aspect < second.aspect

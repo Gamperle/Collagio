@@ -8,61 +8,99 @@ style leaves for it:
 2. `render(content, size, params, ctx)` - draw the tile around the photo.
 
 Size-like parameters are in *style units*: 1/1000 of the canvas short edge.
-`StyleContext.unit` converts them to pixels at the current render scale, so a
+`StyleContext.unit` converts them to pixels at the current render scale. Random
+shapes (torn edges, cut lines, tape) are generated in style units too, so a
 style looks the same in a small preview and in a full-resolution export.
+
+Randomness comes from `ctx.rng(purpose)` / `ctx.numpy_rng(purpose)`: a fresh
+generator per purpose, derived from the photo's seed. `content_box` and
+`render` therefore see the same random values for the same purpose.
 """
 
 from __future__ import annotations
 
+import random
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass
-from random import Random
 from typing import Any, ClassVar
 
+import numpy as np
 from PIL import Image, ImageColor
 
+from collagio.core.rng import derive_seed
 from collagio.errors import StyleError
 
 Box = tuple[int, int, int, int]  # x, y, width, height
+
+STYLE_UNITS_PER_SHORT_EDGE = 1000
 
 
 @dataclass(frozen=True)
 class StyleContext:
     unit: float  # pixels per style unit
-    rng: Random
+    seed: int
 
     def px(self, units: float) -> int:
         return round(units * self.unit)
+
+    def rng(self, purpose: str) -> random.Random:
+        return random.Random(derive_seed(self.seed, purpose))
+
+    def numpy_rng(self, purpose: str) -> np.random.Generator:
+        return np.random.default_rng(derive_seed(self.seed, purpose))
 
 
 class Style(ABC):
     name: ClassVar[str]
     labels: ClassVar[Mapping[str, str]]  # language code -> display name
     defaults: ClassVar[Mapping[str, Any]]
+    # Allowed values for text parameters, and inclusive ranges for numbers.
+    choices: ClassVar[Mapping[str, tuple[str, ...]]] = {}
+    ranges: ClassVar[Mapping[str, tuple[float, float]]] = {}
 
     def resolve(self, params: Mapping[str, Any]) -> dict[str, Any]:
-        """Defaults merged with `params`; unknown or mistyped parameters are rejected."""
+        """Defaults merged with `params`; unknown or invalid parameters are rejected."""
         unknown = set(params) - set(self.defaults)
         if unknown:
             raise StyleError(f"unknown parameter(s) for style {self.name!r}: {sorted(unknown)}")
         resolved = dict(self.defaults)
         for key, value in params.items():
-            default = self.defaults[key]
-            if isinstance(default, int | float) and not isinstance(default, bool):
-                if isinstance(value, bool) or not isinstance(value, int | float):
-                    raise StyleError(f"{self.name}.{key} must be a number, got {value!r}")
+            self._check(key, value)
+            resolved[key] = value
+        self.validate(resolved)
+        return resolved
+
+    def _check(self, key: str, value: Any) -> None:
+        default = self.defaults[key]
+        if isinstance(default, int | float) and not isinstance(default, bool):
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise StyleError(f"{self.name}.{key} must be a number, got {value!r}")
+            if key not in self.ranges:
                 if value < 0:
                     raise StyleError(f"{self.name}.{key} must not be negative, got {value!r}")
-            elif isinstance(default, str) and key.endswith("color"):
+                return
+            low, high = self.ranges[key]
+            if not low <= value <= high:
+                raise StyleError(
+                    f"{self.name}.{key} must be between {low:g} and {high:g}, got {value!r}"
+                )
+        elif isinstance(default, str):
+            if not isinstance(value, str):
+                raise StyleError(f"{self.name}.{key} must be text, got {value!r}")
+            if key.endswith("color"):
                 try:
-                    if not isinstance(value, str):
-                        raise ValueError
                     ImageColor.getrgb(value)
                 except ValueError as exc:
                     raise StyleError(f"{self.name}.{key}: invalid colour {value!r}") from exc
-            resolved[key] = value
-        return resolved
+            if key in self.choices and value not in self.choices[key]:
+                raise StyleError(
+                    f"{self.name}.{key} must be one of {', '.join(self.choices[key])}, "
+                    f"got {value!r}"
+                )
+
+    def validate(self, params: Mapping[str, Any]) -> None:  # noqa: B027 - optional hook
+        """Checks across parameters; override in styles that need them."""
 
     @abstractmethod
     def content_box(

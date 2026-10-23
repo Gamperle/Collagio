@@ -14,16 +14,15 @@ from collections.abc import Callable
 from PIL import Image, ImageFilter
 
 from collagio.core.model import PhotoItem, Project, Shadow
-from collagio.core.rng import derive_rng
+from collagio.core.rng import derive_seed
 from collagio.errors import RenderError
 from collagio.imaging.loader import load_image
 from collagio.imaging.smartcrop import crop_pixels, fill_crop
 from collagio.render.background import parse_color, render_background
 from collagio.styles import StyleContext, get_style
+from collagio.styles.base import STYLE_UNITS_PER_SHORT_EDGE
 
 Loader = Callable[[str], Image.Image]
-
-STYLE_UNITS_PER_SHORT_EDGE = 1000
 
 
 def _pixel_box(item: PhotoItem, scale: float) -> tuple[int, int, int, int]:
@@ -82,7 +81,7 @@ def render_item(
     params = style.resolve(style_ref.params)
     ctx = StyleContext(
         unit=style_unit(project, scale),
-        rng=derive_rng(project.seed, "style", item.id),
+        seed=derive_seed(project.seed, "style", item.id),
     )
 
     _, _, content_w, content_h = style.content_box((width, height), params, ctx)

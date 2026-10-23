@@ -16,7 +16,7 @@ overlap at all, so the guarantee always holds.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from random import Random
 
@@ -46,6 +46,10 @@ class ScatterSettings:
     size_variation: float = 0.5
     min_visible: float = 0.5  # share of each photo that must stay uncovered
     candidates: int = 4  # layouts tried per shrink step
+
+
+# Tile aspect ratio for photo `index` when its tile has `area` square pixels.
+TileAspect = Callable[[int, float], float]
 
 
 @dataclass(frozen=True)
@@ -103,12 +107,17 @@ def _scatter(
     content: Rect,
     coverage: float,
     rng: Random,
+    tile_aspect: TileAspect | None,
 ) -> list[Placement]:
     total_area = content.area * coverage
     weight_sum = sum(weights)
     sizes: list[tuple[float, float]] = []
-    for aspect, weight, rotation in zip(aspects, weights, rotations, strict=True):
+    for index, (aspect, weight, rotation) in enumerate(
+        zip(aspects, weights, rotations, strict=True)
+    ):
         area = total_area * weight / weight_sum
+        if tile_aspect is not None:
+            aspect = tile_aspect(index, area)
         width, height = math.sqrt(area * aspect), math.sqrt(area / aspect)
         extent_w, extent_h = rotated_extent(width, height, rotation)
         fit = min(1.0, content.width / extent_w, content.height / extent_h)
@@ -250,8 +259,13 @@ def scattered_layout(
     height: float,
     settings: ScatterSettings,
     rng: Random,
+    tile_aspect: TileAspect | None = None,
 ) -> list[Placement]:
-    """One rotated placement per photo (in input order) inside the canvas minus margins."""
+    """One rotated placement per photo (in input order) inside the canvas minus margins.
+
+    `aspects` are the tiles' aspect ratios. If `tile_aspect` is given, it refines
+    them once a tile's size is known (frames whose borders do not scale).
+    """
     if not aspects:
         return []
     validate_aspects(aspects)
@@ -267,7 +281,9 @@ def scattered_layout(
     coverage = _COVERAGE_MIN + (_COVERAGE_MAX - _COVERAGE_MIN) * settings.overlap
     for _ in range(_ATTEMPTS):
         for _ in range(max(1, settings.candidates)):
-            placements = _scatter(aspects, weights, rotations, z_order, content, coverage, rng)
+            placements = _scatter(
+                aspects, weights, rotations, z_order, content, coverage, rng, tile_aspect
+            )
             placements = _restack(placements, settings.min_visible)
             if min(visibility(placements)) >= settings.min_visible:
                 return placements

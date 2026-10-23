@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 from typing import Any
 
 import pytest
@@ -16,7 +15,7 @@ ALL_STYLES = available_styles()
 
 
 def _ctx(unit: float = 1.0, seed: int = 0) -> StyleContext:
-    return StyleContext(unit=unit, rng=random.Random(seed))
+    return StyleContext(unit=unit, seed=seed)
 
 
 def _render(
@@ -116,7 +115,7 @@ def test_resolve_fills_defaults() -> None:
         ({"border_width": "wide"}, "must be a number"),
         ({"border_width": True}, "must be a number"),
         ({"border_color": "not-a-colour"}, "invalid colour"),
-        ({"border_color": 123}, "invalid colour"),
+        ({"border_color": 123}, "must be text"),
     ],
 )
 def test_resolve_rejects_invalid_params(params: dict[str, Any], message: str) -> None:

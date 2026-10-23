@@ -155,7 +155,7 @@ PySide6 is added (Phase 4).
 - *unit*: shadow offset/blur parameters change the alpha mask as expected.
 - *golden*: scattered with 5 and 25 photos.
 
-### Phase 3 – Styles (M3, ≈2–3 weeks)
+### Phase 3 – Styles (M3, ≈2–3 weeks) – ✅ done
 Style protocol: `render(img: Image, params: StyleParams, rng: Random, scale: float) -> StyledResult(image RGBA, shadow_mask, content_rect)`.
 `scale` keeps edge details the same physical size in preview and export.
 

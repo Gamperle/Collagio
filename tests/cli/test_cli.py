@@ -357,3 +357,95 @@ def test_shadow_defaults_depend_on_mode(
 ) -> None:
     shadow = _document(capsys, photo_dir, tmp_path, *extra)["shadow"]
     assert (shadow["opacity"], shadow["blur"]) == (opacity, blur)
+
+
+# --- styles -----------------------------------------------------------------------------------
+
+
+def test_style_params(capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path) -> None:
+    document = _document(
+        capsys, photo_dir, tmp_path, "--style", "polaroid",
+        "--style-param", "caption=Summer 2026", "--style-param", "bottom_width=70",
+    )  # fmt: skip
+    assert document["default_style"] == {
+        "name": "polaroid",
+        "params": {"caption": "Summer 2026", "bottom_width": 70.0},
+    }
+
+
+def test_mix_assigns_styles_from_the_list(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    styles = [
+        p["style"]["name"]
+        for p in _document(capsys, photo_dir, tmp_path, "--mix", "stamp, polaroid")["photos"]
+    ]
+    assert set(styles) == {"stamp", "polaroid"}
+
+
+def test_photo_style_overrides_mix(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    photos = _document(
+        capsys, photo_dir, tmp_path, "--mix", "stamp", "--photo-style", "2=torn",
+        "--photo-style", "p005=filmstrip",
+    )["photos"]  # fmt: skip
+    names = {p["id"]: p["style"]["name"] for p in photos}
+    assert names["p002"] == "torn"
+    assert names["p005"] == "filmstrip"
+    assert names["p001"] == "stamp"
+
+
+def test_photo_style_on_saved_project_keeps_positions(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    project = _create(capsys, photo_dir, tmp_path)
+    before = _layout(project)
+    code, _, _ = _run(
+        capsys, "-p", str(project), "-o", str(tmp_path / "y.png"), "--photo-style", "1=stamp",
+        "--save-project", str(project),
+    )  # fmt: skip
+    assert code == 0
+    assert _layout(project) == before
+    assert json.loads(project.read_text())["photos"][0]["style"]["name"] == "stamp"
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--style-param", "shadow=1"], "unknown parameter"),
+        (["--style", "tape", "--style-param", "variant=glue"], "must be one of"),
+        (["--photo-style", "1=sparkly"], "unknown style 'sparkly'"),
+        (["--photo-style", "42=stamp"], "out of range"),
+    ],
+)
+def test_style_errors(
+    capsys: pytest.CaptureFixture[str],
+    photo_dir: Path,
+    tmp_path: Path,
+    extra: list[str],
+    message: str,
+) -> None:
+    code, _, err = _run(
+        capsys, "-i", str(photo_dir), "-o", str(tmp_path / "x.png"), "--size", "300x200", *extra
+    )
+    assert code == 1
+    assert message in err
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["--mix", "stamp,glitter"], "expected style names"),
+        (["--mix", ","], "expected style names"),
+        (["--style-param", "novalue"], "expected KEY=VALUE"),
+        (["--photo-style", "=stamp"], "expected KEY=VALUE"),
+    ],
+)
+def test_style_usage_errors(
+    capsys: pytest.CaptureFixture[str], argv: list[str], message: str
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["-i", "a", "-o", "x.png", *argv])
+    assert exc.value.code == 2
+    assert message in capsys.readouterr().err

@@ -4,7 +4,7 @@ import copy
 
 import pytest
 
-from collagio.core.commands import SwapPhotos, find_photo
+from collagio.core.commands import SetPhotoStyle, SwapPhotos, find_photo
 from collagio.core.model import Canvas, CropBox, PhotoItem, Project, Rect, StyleRef
 from collagio.errors import EditError
 
@@ -82,3 +82,38 @@ def test_errors() -> None:
 
 def test_label() -> None:
     assert SwapPhotos("a", "b").label == "Swap photos"
+
+
+# --- SetPhotoStyle --------------------------------------------------------------------------
+
+
+def test_set_style_and_revert() -> None:
+    project = _project()
+    command = SetPhotoStyle("b", StyleRef("polaroid", {"caption": "Hi"}))
+    command.apply(project)
+    assert project.photos[1].style == StyleRef("polaroid", {"caption": "Hi"})
+    command.revert(project)
+    assert project == _project()
+
+
+def test_reset_to_default_style() -> None:
+    project = _project()
+    SetPhotoStyle("a", None).apply(project)
+    assert project.photos[0].style is None
+    assert project.style_for(project.photos[0]) == project.default_style
+
+
+def test_set_style_copies_the_style() -> None:
+    project = _project()
+    style = StyleRef("stamp", {"value": "1"})
+    SetPhotoStyle("c", style).apply(project)
+    style.params["value"] = "changed"
+    assert project.photos[2].style == StyleRef("stamp", {"value": "1"})
+
+
+def test_set_style_errors() -> None:
+    with pytest.raises(EditError, match="no photo"):
+        SetPhotoStyle("zzz", None).apply(_project())
+    with pytest.raises(EditError, match="not applied"):
+        SetPhotoStyle("a", None).revert(_project())
+    assert SetPhotoStyle("a", None).label == "Change style"
