@@ -104,7 +104,8 @@ collagio --help                                     # all options
 
 ## Development
 
-Requires [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/). See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+branch workflow, tests and translations.
 
 ```bash
 uv sync                          # create .venv with Python 3.13 and dev tools
