@@ -130,6 +130,8 @@ class PhotoGraphicsItem(QGraphicsPixmapItem):
         self.setPos(rect.x + self.tile_offset[0], rect.y + self.tile_offset[1])
 
     def reset_live(self) -> None:
+        # The origin must go too: scaling around a resize preview's origin shifts the tile.
+        self.setTransformOriginPoint(QPointF())
         self.setRotation(0)
         self.setScale(1 / self.preview_scale)
 
