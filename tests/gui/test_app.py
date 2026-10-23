@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import pytest
 from PIL import Image
 from pypdf import PdfReader
 from PySide6.QtCore import QMimeData, QPoint, QPointF, QSettings, Qt, QUrl
-from PySide6.QtGui import QDropEvent, QWheelEvent
+from PySide6.QtGui import QColor, QDropEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
@@ -90,6 +91,27 @@ def test_list_icons_arrive(loaded: MainWindow, qtbot: QtBot) -> None:
     settle(loaded, qtbot)
     item = loaded.photo_list.list.item(0)
     assert not item.icon().isNull()
+
+
+def test_list_icon_follows_changes_on_disk(
+    window: MainWindow, qtbot: QtBot, tmp_path: Path
+) -> None:
+    photo = tmp_path / "edited.png"
+    Image.new("RGB", (60, 40), "#ff0000").save(photo)
+    window.add_photos([str(photo)])
+    settle(window, qtbot)
+
+    def icon_colour() -> QColor:
+        icon = window.photo_list.list.item(0).icon()
+        return icon.pixmap(16, 16).toImage().pixelColor(8, 8)
+
+    assert icon_colour().red() > 200
+    Image.new("RGB", (60, 40), "#0000ff").save(photo)
+    stat = photo.stat()
+    os.utime(photo, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
+    window.photo_list.show_project(window.document.project, [])
+    settle(window, qtbot)
+    assert icon_colour().blue() > 200
 
 
 def test_expand_paths(sample_photos: list[Path], tmp_path: Path) -> None:

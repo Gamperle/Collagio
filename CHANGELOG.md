@@ -4,6 +4,7 @@
 
 - Contributing guide (`CONTRIBUTING.md`) with the feature-branch workflow
 - Fixed: a continuous Ctrl+wheel zoom of a crop is now one undo step instead of one per notch (#9)
+- Fixed: photo list icons are refreshed when a photo is changed on disk (#5)
 
 ## 0.1.0 – 2026-10-23
 

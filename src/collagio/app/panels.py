@@ -221,6 +221,18 @@ class PhotoList(QListWidget):
             event.acceptProposedAction()
 
 
+FileStamp = tuple[int, int] | None
+
+
+def file_stamp(path: str) -> FileStamp:
+    """Modification time and size, to notice a photo changed on disk (None: missing)."""
+    try:
+        stat = Path(path).stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
 class PhotoListPanel(QWidget):
     selection_changed = Signal(list)  # photo ids
     add_requested = Signal()
@@ -242,7 +254,7 @@ class PhotoListPanel(QWidget):
         layout.addWidget(self.list)
         layout.addLayout(buttons)
 
-        self._icons: dict[str, QIcon] = {}
+        self._icons: dict[str, tuple[FileStamp, QIcon]] = {}  # by path
         self._updating = False
         self.add_button.clicked.connect(self.add_requested)
         self.remove_button.clicked.connect(self.remove_requested)
@@ -255,9 +267,10 @@ class PhotoListPanel(QWidget):
             item = QListWidgetItem(Path(photo.path).name)
             item.setData(Qt.ItemDataRole.UserRole, photo.id)
             item.setToolTip(photo.path)
-            if photo.path in self._icons:
-                item.setIcon(self._icons[photo.path])
-            else:
+            cached = self._icons.get(photo.path)
+            if cached is not None:
+                item.setIcon(cached[1])  # until a newer one arrives
+            if cached is None or cached[0] != file_stamp(photo.path):
                 self.icon_requested.emit(photo.path)
             self.list.addItem(item)
             item.setSelected(photo.id in selected)
@@ -268,7 +281,7 @@ class PhotoListPanel(QWidget):
 
     def set_icon(self, path: str, image: QImage) -> None:
         icon = QIcon(QPixmap.fromImage(image))
-        self._icons[path] = icon
+        self._icons[path] = (file_stamp(path), icon)
         for row in range(self.list.count()):
             item = self.list.item(row)
             if item.toolTip() == path:
