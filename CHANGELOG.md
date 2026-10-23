@@ -1,17 +1,33 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 – 2026-10-23
 
+Bug fixes, mostly in the editor.
+
+**Fixed**
+
+- Changing the style for all photos keeps manual moves, rotations, swaps and crops; only an
+  automatic layout is laid out again (#1)
+- *Apply layout* and *Shuffle* ask before replacing photos moved, rotated, swapped or
+  cropped by hand, with "Don't ask again" (#2)
+- Several editor windows no longer overwrite each other's autosave; *Recover unsaved work*
+  lets you choose between sessions, and copies older than 30 days are removed (#3)
+- Opening a project with many missing photos shows one summary message instead of one per
+  photo; missing photos are shown as placeholders (#4)
+- Photo list icons are refreshed when a photo is changed on disk (#5)
+- The thumbnail disk cache is kept under 500 MB; *View > Clear thumbnail cache* empties
+  it (#6)
+- Error messages from the core are shown in the interface language (#7)
+- The film strip's automatic orientation follows the photo, so square and nearly square
+  photos are no longer cropped (#8)
+- A continuous Ctrl+wheel zoom of a crop is one undo step instead of one per notch (#9)
+- German: a gradient background is called "Farbverlauf"
+- `packaging/linux/build-appimage.sh` works without arguments and without FUSE
+
+**Documentation**
+
+- README with a feature overview, example gallery and editor screenshot
 - Contributing guide (`CONTRIBUTING.md`) with the feature-branch workflow
-- Fixed: a continuous Ctrl+wheel zoom of a crop is now one undo step instead of one per notch (#9)
-- Fixed: photo list icons are refreshed when a photo is changed on disk (#5)
-- Fixed: the thumbnail disk cache is kept under 500 MB (least recently used previews are removed at start-up); *View > Clear thumbnail cache* empties it (#6)
-- Fixed: opening a project with many missing photos shows one summary message instead of one per photo; missing photos are shown as placeholders (#4)
-- Fixed: several editor windows no longer overwrite each other's autosave; *Recover unsaved work* lets you choose between sessions, and copies older than 30 days are removed (#3)
-- Fixed: the film strip's automatic orientation follows the photo, so square and nearly square photos are no longer cropped (#8)
-- Fixed: changing the style for all photos keeps manual moves, rotations, swaps and crops; only an automatic layout is laid out again (#1)
-- Fixed: *Apply layout* and *Shuffle* ask before replacing photos moved, rotated, swapped or cropped by hand (with "Don't ask again") (#2)
-- Fixed: error messages from the core are shown in the interface language (#7)
 
 ## 0.1.0 – 2026-10-23
 
