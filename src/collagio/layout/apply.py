@@ -19,6 +19,7 @@ from collagio.core.rng import derive_rng
 from collagio.errors import LayoutError
 from collagio.imaging.loader import oriented_size
 from collagio.layout.grid import GridSettings, grid_layout
+from collagio.layout.scattered import Placement, ScatterSettings, scattered_layout
 
 SizeOf = Callable[[str], tuple[int, int]]
 
@@ -41,6 +42,7 @@ def apply_layout(project: Project, size_of: SizeOf = oriented_size) -> None:
         width, height = size_of(item.path)
         aspects.append(width / height)
 
+    rng = derive_rng(project.seed, "layout", settings.mode.value)
     if settings.mode is LayoutMode.GRID:
         rects = grid_layout(
             aspects,
@@ -52,16 +54,31 @@ def apply_layout(project: Project, size_of: SizeOf = oriented_size) -> None:
                 size_variation=settings.size_variation,
                 order=settings.order,
             ),
-            derive_rng(project.seed, "layout", settings.mode.value),
+            rng,
+        )
+        placements = [Placement(rect, 0.0, z) for z, rect in enumerate(rects)]
+    elif settings.mode is LayoutMode.SCATTERED:
+        placements = scattered_layout(
+            aspects,
+            project.canvas.width,
+            project.canvas.height,
+            ScatterSettings(
+                margin=settings.margin * short_edge,
+                max_rotation=settings.max_rotation,
+                overlap=settings.overlap,
+                size_variation=settings.size_variation,
+                min_visible=settings.min_visible,
+            ),
+            rng,
         )
     else:  # pragma: no cover - guarded by the LayoutMode enum
         raise LayoutError(f"unsupported layout mode {settings.mode}")
 
-    for z, (item, rect) in enumerate(zip(project.photos, rects, strict=True)):
-        item.rect = rect
-        item.rotation = 0.0
+    for item, placement in zip(project.photos, placements, strict=True):
+        item.rect = placement.rect
+        item.rotation = placement.rotation
         item.crop = None
-        item.z = z
+        item.z = placement.z
 
 
 def build_project(

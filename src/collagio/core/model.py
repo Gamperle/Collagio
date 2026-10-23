@@ -68,6 +68,7 @@ class CropBox:
 
 class LayoutMode(StrEnum):
     GRID = "grid"
+    SCATTERED = "scattered"
 
 
 class PlacementOrder(StrEnum):
@@ -115,7 +116,21 @@ class LayoutSettings:
     gap: float = 0.01  # fraction of canvas short edge
     margin: float = 0.02  # fraction of canvas short edge
     size_variation: float = 0.5  # 0 = equal cell sizes, 1 = strong variation
-    order: PlacementOrder = PlacementOrder.SHAPE
+    order: PlacementOrder = PlacementOrder.SHAPE  # grid only
+    max_rotation: float = 12.0  # scattered only: degrees, rotation in [-max, +max]
+    overlap: float = 0.5  # scattered only: 0 = photos barely touch, 1 = heavy overlap
+    min_visible: float = 0.5  # scattered only: share of each photo that stays uncovered
+
+
+@dataclass
+class Shadow:
+    """Drop shadow under every photo. Sizes are in style units (1/1000 of the short edge)."""
+
+    opacity: float = 0.0  # 0 = no shadow
+    blur: float = 6.0
+    offset_x: float = 3.0
+    offset_y: float = 5.0
+    color: str = "#000000"
 
 
 @dataclass
@@ -135,6 +150,7 @@ class Project:
     photos: list[PhotoItem] = field(default_factory=list)
     layout: LayoutSettings = field(default_factory=LayoutSettings)
     default_style: StyleRef = field(default_factory=StyleRef)
+    shadow: Shadow = field(default_factory=Shadow)
     seed: int = 0
 
     def style_for(self, item: PhotoItem) -> StyleRef:

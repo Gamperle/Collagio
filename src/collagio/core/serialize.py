@@ -26,6 +26,7 @@ from collagio.core.model import (
     PlacementOrder,
     Project,
     Rect,
+    Shadow,
     StyleRef,
 )
 from collagio.errors import ProjectFormatError
@@ -92,6 +93,16 @@ def project_to_dict(project: Project, base_dir: Path | None = None) -> dict[str,
             "margin": project.layout.margin,
             "size_variation": project.layout.size_variation,
             "order": project.layout.order.value,
+            "max_rotation": project.layout.max_rotation,
+            "overlap": project.layout.overlap,
+            "min_visible": project.layout.min_visible,
+        },
+        "shadow": {
+            "opacity": project.shadow.opacity,
+            "blur": project.shadow.blur,
+            "offset_x": project.shadow.offset_x,
+            "offset_y": project.shadow.offset_y,
+            "color": project.shadow.color,
         },
         "default_style": _style_to_dict(project.default_style),
         "photos": [
@@ -171,6 +182,18 @@ def project_from_dict(data: Any, base_dir: Path | None = None) -> Project:
             margin=float(layout_data.get("margin", layout_defaults.margin)),
             size_variation=float(layout_data.get("size_variation", layout_defaults.size_variation)),
             order=PlacementOrder(layout_data.get("order", layout_defaults.order)),
+            max_rotation=float(layout_data.get("max_rotation", layout_defaults.max_rotation)),
+            overlap=float(layout_data.get("overlap", layout_defaults.overlap)),
+            min_visible=float(layout_data.get("min_visible", layout_defaults.min_visible)),
+        )
+        shadow_data = data.get("shadow", {})
+        shadow_defaults = Shadow()
+        shadow = Shadow(
+            opacity=float(shadow_data.get("opacity", shadow_defaults.opacity)),
+            blur=float(shadow_data.get("blur", shadow_defaults.blur)),
+            offset_x=float(shadow_data.get("offset_x", shadow_defaults.offset_x)),
+            offset_y=float(shadow_data.get("offset_y", shadow_defaults.offset_y)),
+            color=str(shadow_data.get("color", shadow_defaults.color)),
         )
         default_style = (
             _style_from_dict(data["default_style"]) if "default_style" in data else StyleRef()
@@ -181,6 +204,7 @@ def project_from_dict(data: Any, base_dir: Path | None = None) -> Project:
             photos=photos,
             layout=layout,
             default_style=default_style,
+            shadow=shadow,
             seed=int(data.get("seed", 0)),
         )
     except (KeyError, TypeError, ValueError, AttributeError) as exc:

@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from PIL import Image
@@ -53,6 +54,11 @@ def test_help_lists_presets_and_styles(capsys: pytest.CaptureFixture[str]) -> No
         (["-i", "a", "-o", "x.png", "--mode", "spiral"], "invalid choice"),
         (["-o", "x.png", "--bogus"], "unrecognized arguments"),
         (["-i", "a", "-o", "x.png", "--order", "size"], "invalid choice"),
+        (["-i", "a", "-o", "x.png", "--rotation", "50"], "must be between 0 and 45"),
+        (["-i", "a", "-o", "x.png", "--overlap", "1.5"], "must be between 0 and 1"),
+        (["-i", "a", "-o", "x.png", "--min-visible", "-0.1"], "must be between 0 and 1"),
+        (["-i", "a", "-o", "x.png", "--shadow", "2"], "must be between 0 and 1"),
+        (["-i", "a", "-o", "x.png", "--shadow-blur", "-1"], "must not be negative"),
         (["-i", "a", "-o", "x.png", "--swap", "1"], "two photos separated by a comma"),
         (["-i", "a", "-o", "x.png", "--swap", "1,"], "two photos separated by a comma"),
         (["-p", "p.json", "-o", "x.png", "--order", "input"], "--order only applies"),
@@ -186,6 +192,7 @@ def test_style_and_background_options_are_saved(
     assert document["seed"] == 3
     assert document["layout"] == {
         "mode": "grid", "gap": 0.02, "margin": 0.05, "size_variation": 0.8, "order": "random",
+        "max_rotation": 12.0, "overlap": 0.5, "min_visible": 0.5,
     }  # fmt: skip
     assert document["default_style"] == {
         "name": "plain",
@@ -304,3 +311,49 @@ def test_invalid_swaps(
     )  # fmt: skip
     assert code == 1
     assert message in err
+
+
+# --- scattered mode and shadows ------------------------------------------------------------
+
+
+def _document(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path, *extra: str
+) -> dict[str, Any]:
+    return dict(json.loads(_create(capsys, photo_dir, tmp_path, *extra).read_text()))
+
+
+def test_scattered_mode(
+    capsys: pytest.CaptureFixture[str], photo_dir: Path, tmp_path: Path
+) -> None:
+    document = _document(
+        capsys, photo_dir, tmp_path, "--mode", "scattered", "--rotation", "20",
+        "--overlap", "0.7", "--min-visible", "0.4",
+    )  # fmt: skip
+    layout = document["layout"]
+    assert (layout["mode"], layout["max_rotation"], layout["overlap"], layout["min_visible"]) == (
+        "scattered", 20.0, 0.7, 0.4,
+    )  # fmt: skip
+    rotations = [p["rotation"] for p in document["photos"]]
+    assert any(r != 0 for r in rotations)
+    assert all(abs(r) <= 20 for r in rotations)
+
+
+@pytest.mark.parametrize(
+    ("extra", "opacity", "blur"),
+    [
+        ((), 0.0, 6.0),
+        (("--mode", "scattered"), 0.45, 6.0),
+        (("--mode", "scattered", "--shadow", "0"), 0.0, 6.0),
+        (("--shadow", "0.3", "--shadow-blur", "12"), 0.3, 12.0),
+    ],
+)
+def test_shadow_defaults_depend_on_mode(
+    capsys: pytest.CaptureFixture[str],
+    photo_dir: Path,
+    tmp_path: Path,
+    extra: tuple[str, ...],
+    opacity: float,
+    blur: float,
+) -> None:
+    shadow = _document(capsys, photo_dir, tmp_path, *extra)["shadow"]
+    assert (shadow["opacity"], shadow["blur"]) == (opacity, blur)

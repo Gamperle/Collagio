@@ -4,6 +4,7 @@ Examples:
     collagio -i ./photos -o collage.png --size A4 --dpi 300 --seed 42
     collagio -i a.jpg b.jpg c.jpg -o out.jpg --size fullhd --border 8 \\
              --save-project my.collagio.json
+    collagio -i ./photos -o scattered.jpg --mode scattered --rotation 15 --overlap 0.5
     collagio --project my.collagio.json -o out.png --swap 1,4
 """
 
@@ -25,6 +26,7 @@ from collagio.core.model import (
     LayoutSettings,
     PlacementOrder,
     Project,
+    Shadow,
     StyleRef,
 )
 from collagio.core.serialize import load_project, save_project
@@ -35,6 +37,8 @@ from collagio.layout.apply import build_project
 from collagio.render.background import parse_color
 from collagio.render.export import export_image, format_for_path
 from collagio.styles import available_styles, get_style
+
+DEFAULT_SCATTERED_SHADOW = 0.45
 
 
 def _fraction(value: str) -> float:
@@ -48,6 +52,20 @@ def _unit_interval(value: str) -> float:
     number = float(value)
     if not 0.0 <= number <= 1.0:
         raise argparse.ArgumentTypeError(f"must be between 0 and 1, got {value}")
+    return number
+
+
+def _degrees(value: str) -> float:
+    number = float(value)
+    if not 0.0 <= number <= 45.0:
+        raise argparse.ArgumentTypeError(f"must be between 0 and 45, got {value}")
+    return number
+
+
+def _non_negative(value: str) -> float:
+    number = float(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError(f"must not be negative, got {value}")
     return number
 
 
@@ -150,6 +168,36 @@ def build_parser() -> argparse.ArgumentParser:
         "(1, 2, ...) or by id from the project file (p001, ...); repeatable",
     )
 
+    scattered = parser.add_argument_group("scattered mode")
+    scattered.add_argument(
+        "--rotation",
+        type=_degrees,
+        default=12.0,
+        metavar="DEG",
+        help="maximum rotation in degrees, 0-45 (default 12)",
+    )
+    scattered.add_argument(
+        "--overlap",
+        type=_unit_interval,
+        default=0.5,
+        help="0 = photos barely touch, 1 = heavy overlap (default 0.5)",
+    )
+    scattered.add_argument(
+        "--min-visible",
+        type=_unit_interval,
+        default=0.5,
+        help="share of every photo that stays uncovered (default 0.5)",
+    )
+
+    shadow = parser.add_argument_group("shadow")
+    shadow.add_argument(
+        "--shadow",
+        type=_unit_interval,
+        metavar="OPACITY",
+        help="drop shadow opacity 0-1 (default 0.45 in scattered mode, 0 = off in grid mode)",
+    )
+    shadow.add_argument("--shadow-blur", type=_non_negative, default=6.0, help="default 6")
+
     style = parser.add_argument_group("style")
     style.add_argument("--style", choices=available_styles(), default="plain")
     style.add_argument("--border", type=float, help="border width")
@@ -200,7 +248,7 @@ def _new_project(args: argparse.Namespace) -> Project:
     photos = _collect_photos(args.input)
     orientation = Orientation(args.orientation) if args.orientation else None
     width, height = parse_size(args.size, args.dpi, orientation)
-    return build_project(
+    project = build_project(
         photos,
         Canvas(width=width, height=height, dpi=args.dpi, background=_background(args.background)),
         LayoutSettings(
@@ -209,10 +257,21 @@ def _new_project(args: argparse.Namespace) -> Project:
             margin=args.margin,
             size_variation=args.size_variation,
             order=PlacementOrder(args.order or PlacementOrder.SHAPE),
+            max_rotation=args.rotation,
+            overlap=args.overlap,
+            min_visible=args.min_visible,
         ),
         _style(args),
         seed=args.seed,
     )
+    default_opacity = (
+        DEFAULT_SCATTERED_SHADOW if project.layout.mode is LayoutMode.SCATTERED else 0.0
+    )
+    project.shadow = Shadow(
+        opacity=default_opacity if args.shadow is None else args.shadow,
+        blur=args.shadow_blur,
+    )
+    return project
 
 
 def _photo_id(project: Project, token: str) -> str:

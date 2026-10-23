@@ -18,6 +18,7 @@ from random import Random
 
 from collagio.core.model import PlacementOrder, Rect
 from collagio.errors import LayoutError
+from collagio.layout.common import content_rect, geometric_mean, validate_aspects
 
 # Extra weight drawn per photo, scaled by size_variation: most photos stay
 # small, some get double or quadruple area.
@@ -141,18 +142,9 @@ def grid_layout(
     """One cell per photo (in input order) covering the canvas minus margins."""
     if not aspects:
         return []
-    if any(a <= 0 or not math.isfinite(a) for a in aspects):
-        raise LayoutError("photo aspect ratios must be positive")
-    content = Rect(
-        settings.margin,
-        settings.margin,
-        width - 2 * settings.margin,
-        height - 2 * settings.margin,
-    )
-    if content.width <= 0 or content.height <= 0:
-        raise LayoutError(f"margin {settings.margin:g} px is too large for {width}x{height} px")
-
-    target_aspect = math.exp(sum(math.log(a) for a in aspects) / len(aspects))
+    validate_aspects(aspects)
+    content = content_rect(width, height, settings.margin)
+    target_aspect = geometric_mean(aspects)
     best: list[Rect] | None = None
     best_score = math.inf
     for _ in range(max(1, settings.candidates)):

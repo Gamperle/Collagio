@@ -13,10 +13,12 @@ from collagio.core.model import (
     BackgroundKind,
     Canvas,
     CropBox,
+    LayoutMode,
     LayoutSettings,
     PhotoItem,
     Project,
     Rect,
+    Shadow,
     StyleRef,
 )
 from collagio.core.serialize import (
@@ -49,8 +51,17 @@ def _project(photo_dir: Path) -> Project:
             ),
             PhotoItem(id="p003", path=str(photo_dir / "c.webp")),
         ],
-        layout=LayoutSettings(gap=0.015, margin=0.03, size_variation=0.8),
+        layout=LayoutSettings(
+            mode=LayoutMode.SCATTERED,
+            gap=0.015,
+            margin=0.03,
+            size_variation=0.8,
+            max_rotation=20.0,
+            overlap=0.7,
+            min_visible=0.4,
+        ),
         default_style=StyleRef("plain", {"corner_radius": 4}),
+        shadow=Shadow(opacity=0.4, blur=9.0, offset_x=-2.0, offset_y=7.5, color="#202020"),
         seed=1234,
     )
 
@@ -120,6 +131,7 @@ def test_missing_optional_fields_get_defaults() -> None:
     assert project.canvas.background == Background()
     assert project.layout == LayoutSettings()
     assert project.default_style == StyleRef()
+    assert project.shadow == Shadow()
     assert project.photos == [PhotoItem(id="a", path="a.jpg")]
     assert project.seed == 0
 
@@ -143,6 +155,8 @@ def _valid() -> dict[str, Any]:
         (lambda d: d["photos"][0].pop("id"), "invalid project file"),
         (lambda d: d["photos"].append("not an object"), "invalid project file"),
         (lambda d: d["default_style"].update(params=[1]), "invalid project file"),
+        (lambda d: d["shadow"].update(opacity="dark"), "invalid project file"),
+        (lambda d: d["layout"].update(overlap=None), "invalid project file"),
     ],
 )
 def test_invalid_documents_are_rejected(mutate: Any, message: str) -> None:

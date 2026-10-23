@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from collagio.core.model import Canvas, CropBox, LayoutSettings, Rect, StyleRef
+from collagio.core.model import Canvas, CropBox, LayoutMode, LayoutSettings, Rect, StyleRef
 from collagio.errors import LayoutError
 from collagio.layout import apply as apply_module
 from collagio.layout.apply import apply_layout, build_project
@@ -87,3 +87,38 @@ def test_real_files_use_exif_oriented_size(
     land = next(p for p in sample_photos if "01_landscape" in p.name)
     build_project([exif, land], Canvas(1000, 1000), seed=0)
     assert seen == [[pytest.approx(400 / 600), pytest.approx(600 / 400)]]
+
+
+def test_scattered_mode_sets_rotation_and_stacking() -> None:
+    layout = LayoutSettings(mode=LayoutMode.SCATTERED, max_rotation=20, overlap=0.6)
+    names = list(SIZES) * 4
+    project = build_project(names, Canvas(2000, 1500), layout=layout, seed=5, size_of=size_of)
+    assert sorted(p.z for p in project.photos) == list(range(len(names)))
+    assert any(p.rotation != 0 for p in project.photos)
+    assert all(abs(p.rotation) <= 20 for p in project.photos)
+    for item in project.photos:
+        assert item.rect is not None
+        assert item.rect.aspect == pytest.approx(size_of(item.path)[0] / size_of(item.path)[1])
+
+
+def test_scattered_margin_is_relative_to_short_edge() -> None:
+    layout = LayoutSettings(mode=LayoutMode.SCATTERED, margin=0.1, max_rotation=0)
+    project = build_project(list(SIZES), Canvas(2000, 1000), layout=layout, size_of=size_of)
+    for item in project.photos:
+        assert item.rect is not None
+        assert item.rect.x >= 100 - 1e-6
+        assert item.rect.right <= 1900 + 1e-6
+
+
+def test_switching_mode_resets_rotation() -> None:
+    names = list(SIZES) * 2
+    project = build_project(
+        names,
+        Canvas(2000, 1500),
+        layout=LayoutSettings(mode=LayoutMode.SCATTERED, max_rotation=30),
+        size_of=size_of,
+    )
+    project.layout.mode = LayoutMode.GRID
+    apply_layout(project, size_of)
+    assert all(p.rotation == 0 for p in project.photos)
+    assert [p.z for p in project.photos] == list(range(len(names)))

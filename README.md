@@ -2,7 +2,8 @@
 
 Desktop photo collage creator for Windows and Linux.
 
-> **Status:** early development. Phase 1 is done: grid collages from the command line.
+> **Status:** early development. Phases 1-2 are done: grid and scattered collages from the
+> command line.
 > The desktop GUI follows in Phase 4.
 
 ## Planned features
@@ -26,6 +27,7 @@ See [TASK.md](TASK.md) for the specification and
 collagio -i ./photos -o collage.png --size A4 --dpi 300 --seed 42
 collagio -i a.jpg b.jpg c.jpg -o out.jpg --size fullhd --border 8 --corner-radius 12 \
          --background "#f4f1ea" --save-project my.collagio.json
+collagio -i ./photos -o scattered.jpg --mode scattered --rotation 15 --overlap 0.7
 collagio --project my.collagio.json -o out.png      # re-render a saved project
 collagio --help                                     # all options
 ```
@@ -39,6 +41,11 @@ collagio --help                                     # all options
   least cropping), `random` (shuffled by the seed) or `input` (given order from the top-left);
   `--swap 1,4` exchanges two photos afterwards (by number in input order or by id such as
   `p004`, repeatable, also works with `--project`)
+- **Scattered mode** (`--mode scattered`): rotated, overlapping photos. `--rotation` (max
+  degrees, default 12), `--overlap 0..1` (default 0.5), `--min-visible 0..1` (share of every
+  photo that stays uncovered, default 0.5; guaranteed)
+- **Shadow:** `--shadow OPACITY` (default 0.45 in scattered mode, off in grid mode),
+  `--shadow-blur`
 - **Style:** `--border`, `--corner-radius` in 1/1000 of the canvas short edge, `--border-color`
 - **Background:** one colour, or two comma-separated colours for a gradient
 

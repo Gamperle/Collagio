@@ -141,7 +141,7 @@ PySide6 is added (Phase 4).
 - *cli*: run against fixture folder → file exists, correct size, exit code 0;
   bad input → non-zero exit and readable error.
 
-### Phase 2 – Scattered mode (M2, ≈1 week)
+### Phase 2 – Scattered mode (M2, ≈1 week) – ✅ done
 1. `layout/scattered.py` – Poisson-disc-like placement of centres, seeded
    rotation in ±max angle, size variation, overlap target controls spacing;
    ensures every photo is at least X % visible

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from collagio.core.model import Canvas, CropBox, PhotoItem, Project, Rect, StyleRef
+from collagio.core.model import Canvas, CropBox, PhotoItem, Project, Rect, Shadow, StyleRef
 from collagio.errors import RenderError
 from collagio.render.renderer import render_project
 
@@ -133,3 +133,79 @@ def test_default_loader_reads_files(sample_photos: list[Path]) -> None:
     item = PhotoItem("a", str(sample_photos[0]), rect=Rect(0, 0, 200, 100))
     image = render_project(_project(item))
     assert image.getpixel((100, 50)) != WHITE
+
+
+# --- drop shadow ---------------------------------------------------------------------------
+
+BLACK = (0, 0, 0)
+
+
+def _shadow_project(shadow: Shadow, scale_size: int = 1000) -> Project:
+    # Short edge 1000 px -> 1 style unit = 1 px.
+    return Project(
+        canvas=Canvas(scale_size, scale_size),
+        photos=[PhotoItem("a", "a", rect=Rect(100, 100, 200, 200), crop=CropBox(0, 0, 0.5, 1))],
+        shadow=shadow,
+    )
+
+
+def test_no_shadow_by_default() -> None:
+    image = render_project(_shadow_project(Shadow()), loader=split_image)
+    assert image.getpixel((305, 305)) == WHITE
+
+
+def test_shadow_is_offset_below_right() -> None:
+    shadow = Shadow(opacity=1.0, blur=0, offset_x=10, offset_y=20)
+    image = render_project(_shadow_project(shadow), loader=split_image)
+    assert image.getpixel((305, 200)) == BLACK  # right of the photo
+    assert image.getpixel((200, 315)) == BLACK  # below the photo
+    assert image.getpixel((95, 200)) == WHITE  # nothing on the left
+    assert image.getpixel((200, 95)) == WHITE  # nothing above
+    assert image.getpixel((200, 200)) == RED  # photo is on top of its shadow
+
+
+def test_shadow_opacity_and_colour() -> None:
+    shadow = Shadow(opacity=0.5, blur=0, offset_x=10, offset_y=10, color="#0000ff")
+    image = render_project(_shadow_project(shadow), loader=split_image)
+    assert image.getpixel((305, 200)) == pytest.approx((127, 127, 255), abs=1)
+
+
+def test_shadow_blur_softens_edges() -> None:
+    sharp = render_project(
+        _shadow_project(Shadow(opacity=1.0, blur=0, offset_x=0, offset_y=0)), loader=split_image
+    )
+    soft = render_project(
+        _shadow_project(Shadow(opacity=1.0, blur=8, offset_x=0, offset_y=0)), loader=split_image
+    )
+    assert sharp.getpixel((310, 200)) == WHITE
+    assert BLACK < soft.getpixel((310, 200)) < WHITE  # type: ignore[operator]
+
+
+def test_shadow_scales_with_render_scale() -> None:
+    shadow = Shadow(opacity=1.0, blur=0, offset_x=20, offset_y=0)
+    half = render_project(_shadow_project(shadow), scale=0.5, loader=split_image)
+    # Photo ends at x=150, shadow offset 10 px at half scale.
+    assert half.getpixel((155, 100)) == BLACK
+    assert half.getpixel((162, 100)) == WHITE
+
+
+def test_shadow_of_upper_photo_falls_on_lower_photo() -> None:
+    project = _shadow_project(Shadow(opacity=1.0, blur=0, offset_x=10, offset_y=0))
+    project.photos.append(
+        PhotoItem("b", "a", rect=Rect(400, 100, 200, 200), crop=CropBox(0.5, 0, 0.5, 1), z=1)
+    )
+    project.photos[0].rect = Rect(250, 100, 200, 200)  # under photo b, sticking out left
+    image = render_project(project, loader=split_image)
+    assert image.getpixel((260, 200)) == RED  # lower photo
+    assert image.getpixel((405, 200)) == BLUE  # upper photo
+    assert image.getpixel((605, 200)) == BLACK  # upper photo's shadow
+
+
+@pytest.mark.parametrize(
+    ("shadow", "message"),
+    [(Shadow(opacity=1.5), "opacity"), (Shadow(opacity=-0.1), "opacity"),
+     (Shadow(opacity=0.5, blur=-1), "blur"), (Shadow(opacity=0.5, color="nope"), "colour")],
+)  # fmt: skip
+def test_invalid_shadow(shadow: Shadow, message: str) -> None:
+    with pytest.raises(RenderError, match=message):
+        render_project(_shadow_project(shadow), loader=split_image)
