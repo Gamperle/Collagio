@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -300,6 +301,18 @@ def test_filmstrip_auto_orientation_follows_the_photo(
     tile = style.render(content, size, params, context)
     for left, top, right, bottom in style.holes(size, params, photo_aspect):
         assert alpha(tile, round((left + right) / 2), round((top + bottom) / 2)) == 0
+
+
+def test_filmstrip_holes_have_their_exact_sub_pixel_size() -> None:
+    style = FilmstripStyle()
+    params = style.resolve({})
+    size = (331, 220)  # hole positions with different fractional parts
+    tile = render("filmstrip", size)
+    cut = 1 - np.asarray(tile.getchannel("A"), dtype=np.float64) / 255
+    for left, top, right, bottom in style.holes(size, params):
+        row = cut[round((top + bottom) / 2), int(left) - 2 : int(right) + 3]
+        assert row.sum() == pytest.approx(right - left, abs=0.3)
+    assert ((cut > 0.05) & (cut < 0.95)).any()  # soft, anti-aliased edges
 
 
 def test_filmstrip_band_range() -> None:
