@@ -1,14 +1,30 @@
 #!/usr/bin/env bash
 # Build Collagio-<version>-x86_64.AppImage from the PyInstaller folder.
-#   packaging/linux/build-appimage.sh <pyinstaller-dist-dir> <version> <output-dir>
+#   packaging/linux/build-appimage.sh [<pyinstaller-dist-dir> [<version> [<output-dir>]]]
+# Defaults: build/dist/Collagio, the version in src/collagio/__init__.py, build/release.
 # Needs appimagetool on PATH (or APPIMAGETOOL=/path/to/appimagetool).
 set -euo pipefail
 
-DIST=$(realpath "$1")
-VERSION=$2
-OUT=$(realpath "$3")
 HERE=$(dirname "$(realpath "$0")")
 ROOT=$(realpath "$HERE/../..")
+DIST=${1:-$ROOT/build/dist/Collagio}
+VERSION=${2:-$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$ROOT/src/collagio/__init__.py")}
+OUT=${3:-$ROOT/build/release}
+
+if [ ! -x "$DIST/collagio-gui" ]; then
+    echo "error: no PyInstaller build in $DIST; build it first:" >&2
+    echo "  uv sync --group build" >&2
+    echo "  uv run pyinstaller packaging/pyinstaller/collagio.spec --noconfirm --distpath build/dist" >&2
+    exit 1
+fi
+if ! command -v "${APPIMAGETOOL:-appimagetool}" > /dev/null; then
+    echo "error: appimagetool not found; put it on PATH or set APPIMAGETOOL=/path/to/appimagetool" >&2
+    echo "  (https://github.com/AppImage/appimagetool/releases)" >&2
+    exit 1
+fi
+DIST=$(realpath "$DIST")
+mkdir -p "$OUT"
+OUT=$(realpath "$OUT")
 APP_ID=io.github.gamperle.Collagio
 APPDIR=$(mktemp -d)/Collagio.AppDir
 
@@ -39,6 +55,6 @@ exec "$HERE/usr/lib/collagio/collagio-gui" "$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"
 
-mkdir -p "$OUT"
-ARCH=x86_64 "${APPIMAGETOOL:-appimagetool}" --no-appstream "$APPDIR" "$OUT/Collagio-$VERSION-x86_64.AppImage"
+# appimagetool is an AppImage itself; extracting it avoids needing FUSE (libfuse2).
+APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 "${APPIMAGETOOL:-appimagetool}" --no-appstream "$APPDIR" "$OUT/Collagio-$VERSION-x86_64.AppImage"
 echo "$OUT/Collagio-$VERSION-x86_64.AppImage"
