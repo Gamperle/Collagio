@@ -128,7 +128,7 @@ Packaging (normally done by the *Release* workflow):
 ```bash
 uv sync --group build
 uv run pyinstaller packaging/pyinstaller/collagio.spec --noconfirm --distpath build/dist
-packaging/linux/build-appimage.sh build/dist/Collagio 0.1.0 build/release   # needs appimagetool
+packaging/linux/build-appimage.sh   # needs appimagetool; writes build/release/*.AppImage
 ```
 
 Generate the synthetic test photos to look at them:
