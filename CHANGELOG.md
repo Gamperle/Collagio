@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 0.1.1 – 2026-10-23
 
 Bug fixes, mostly in the editor.
@@ -28,6 +30,7 @@ Bug fixes, mostly in the editor.
 
 - README with a feature overview, example gallery and editor screenshot
 - Contributing guide (`CONTRIBUTING.md`) with the feature-branch workflow
+- Fixed: the film strip's sprocket holes are drawn smoothly and evenly at any size, and rotated photos (scattered layout) have anti-aliased edges in every style
 
 ## 0.1.0 – 2026-10-23
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
@@ -16,7 +17,7 @@ from collagio.core.model import (
     TextItem,
 )
 from collagio.errors import RenderError
-from collagio.render.renderer import render_project
+from collagio.render.renderer import render_project, rotate_tile
 
 RED, BLUE, WHITE = (255, 0, 0), (0, 0, 255), (255, 255, 255)
 
@@ -252,3 +253,14 @@ def test_text_shadow_uses_project_shadow_or_default() -> None:
     without = render_project(project, loader=split_image)
     assert with_shadow.tobytes() != without.tobytes()
     assert with_shadow.convert("L").getextrema()[0] < without.convert("L").getextrema()[0]
+
+
+def test_rotated_tiles_have_smooth_edges_without_dark_fringes() -> None:
+    tile = Image.new("RGBA", (200, 100), (240, 240, 240, 255))
+    rotated = rotate_tile(tile, 7)
+    alpha = np.asarray(rotated.getchannel("A"))
+    partial = (alpha > 0) & (alpha < 255)
+    assert partial.sum() > 300  # the outer edge is anti-aliased all round
+    rgb = np.asarray(rotated.convert("RGB"))[alpha > 16]
+    assert rgb.min() >= 200  # no dark fringe from the transparent surroundings
+    assert rotate_tile(tile, 0).size == (204, 104)  # padded, so it stays centred

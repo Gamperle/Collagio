@@ -8,18 +8,20 @@ portrait photos a vertical one.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw
 
 from collagio.styles.base import Box, Style, StyleContext, register
-from collagio.styles.common import ANTIALIAS_RADIUS, rgb
+from collagio.styles.common import rgb
 
 SIDE_SHARE = 0.03  # frame divider at the short ends, share of the long side
 HOLE_HEIGHT = 0.42  # sprocket hole height, share of the band
 HOLE_ASPECT = 1.35  # sprocket hole width / height
 HOLE_PITCH = 1.9  # distance between hole starts, in hole widths
+SUPERSAMPLE = 4  # holes are drawn this many times larger, then averaged down
 SQUARE_TOLERANCE = 0.01  # photos this close to square count as square (preview rounding)
 
 
@@ -109,10 +111,33 @@ class FilmstripStyle(Style):
         x, y, _, _ = self.content_box(size, params, ctx)
         tile.alpha_composite(content.convert("RGBA"), (x, y))
         cutouts = Image.new("L", size, 0)
-        draw = ImageDraw.Draw(cutouts)
-        for left, top, right, bottom in self.holes(size, params, ctx.photo_aspect):
-            radius = (bottom - top if right - left > bottom - top else right - left) * 0.2
-            draw.rounded_rectangle((left, top, right, bottom), radius=radius, fill=255)
-        cutouts = cutouts.filter(ImageFilter.GaussianBlur(ANTIALIAS_RADIUS))
+        for hole in self.holes(size, params, ctx.photo_aspect):
+            patch, position = _hole_patch(hole)
+            cutouts.paste(patch, position)
         tile.putalpha(ImageChops.subtract(tile.getchannel("A"), cutouts))
         return tile
+
+
+def _hole_patch(hole: tuple[float, float, float, float]) -> tuple[Image.Image, tuple[int, int]]:
+    """Anti-aliased mask of one rounded hole at its exact sub-pixel position.
+
+    Drawn SUPERSAMPLE times larger and averaged down, so every hole has the same
+    size and shape however it falls on the pixel grid (whole-pixel drawing made
+    neighbouring holes differ by a pixel and their corners jagged).
+    """
+    left, top, right, bottom = hole
+    x0, y0 = math.floor(left), math.floor(top)
+    width, height = math.ceil(right) - x0, math.ceil(bottom) - y0
+    radius = min(right - left, bottom - top) * 0.2
+    patch = Image.new("L", (width * SUPERSAMPLE, height * SUPERSAMPLE), 0)
+    ImageDraw.Draw(patch).rounded_rectangle(
+        (
+            (left - x0) * SUPERSAMPLE,
+            (top - y0) * SUPERSAMPLE,
+            (right - x0) * SUPERSAMPLE - 1,
+            (bottom - y0) * SUPERSAMPLE - 1,
+        ),
+        radius=radius * SUPERSAMPLE,
+        fill=255,
+    )
+    return patch.resize((width, height), Image.Resampling.BOX), (x0, y0)

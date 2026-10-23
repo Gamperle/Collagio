@@ -129,10 +129,27 @@ def render_item(
     tile = style.render(content, (width, height), params, ctx)
 
     if item.rotation % 360:
-        tile = tile.rotate(item.rotation, Image.Resampling.BICUBIC, expand=True)
+        tile = rotate_tile(tile, item.rotation)
         left += (width - tile.width) // 2
         top += (height - tile.height) // 2
     return tile, (left, top)
+
+
+ROTATE_PADDING = 2  # transparent pixels around a tile before it is rotated
+
+
+def rotate_tile(tile: Image.Image, degrees: float) -> Image.Image:
+    """Rotate an RGBA tile counter-clockwise with smooth, fringe-free edges.
+
+    Pillow does not interpolate across the image border, so a tile's outer edge
+    would come out as a hard staircase: a transparent margin moves the edge
+    inside the image. Rotating premultiplied (RGBa) keeps the transparent
+    pixels' colour from darkening the edge. The result stays centred on the tile.
+    """
+    padded = Image.new("RGBA", (tile.width + 2 * ROTATE_PADDING, tile.height + 2 * ROTATE_PADDING))
+    padded.paste(tile, (ROTATE_PADDING, ROTATE_PADDING))
+    rotated = padded.convert("RGBa").rotate(degrees, Image.Resampling.BILINEAR, expand=True)
+    return rotated.convert("RGBA")
 
 
 def render_photo(
