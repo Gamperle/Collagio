@@ -348,10 +348,14 @@ def test_edge_handle_changes_the_frame_shape_and_crops(loaded: MainWindow, qtbot
     QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=start.toPoint())
     for step in range(1, 6):
         QTest.mouseMove(viewport, (start + (end - start) * step / 5).toPoint())
-    loaded.renderer.wait()
-    qtbot.wait(20)  # the live preview of the new crop arrives
-    live = loaded.canvas.photo_items["p001"].sceneBoundingRect()
-    assert live.width() == pytest.approx(original.width * 2 / 3, rel=0.05)
+
+    def preview_has_new_width() -> bool:
+        # One live render at a time: earlier frames may arrive first.
+        loaded.renderer.wait()
+        live = loaded.canvas.photo_items["p001"].sceneBoundingRect()
+        return live.width() == pytest.approx(original.width * 2 / 3, rel=0.05)
+
+    qtbot.waitUntil(preview_has_new_width, timeout=10_000)
     QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=end.toPoint())
     settle(loaded, qtbot)
     resized = _rect(loaded, "p001")
