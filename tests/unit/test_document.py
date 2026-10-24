@@ -226,6 +226,30 @@ def test_default_style_keeps_grid_cells_with_manual_edits() -> None:
     assert [p.rect for p in doc.project.photos] == rects
 
 
+def test_resize_photo_crops_instead_of_stretching() -> None:
+    doc = _document(3)
+    doc.crop_photo("p001", CropBox(0.25, 0.25, 0.5, 0.5))  # land.jpg 3:2, zoomed in
+    before = copy.deepcopy(doc.project)
+    rect = doc.project.photos[0].rect
+    assert rect is not None
+    square = Rect(rect.x, rect.y, rect.height, rect.height)
+    doc.resize_photo("p001", square)
+    photo = doc.project.photos[0]
+    assert photo.rect == square
+    crop = photo.crop
+    assert crop is not None
+    width, height = SIZES["land.jpg"]
+    shown = crop.width * width / (crop.height * height)
+    assert shown == pytest.approx(content_aspect(doc.project, photo, width / height))
+    assert (crop.x + crop.width / 2, crop.y + crop.height / 2) == pytest.approx((0.5, 0.5))
+    assert doc.project.layout_edited
+    assert doc.undo_stack.undo_label == "Resize photo"
+    doc.undo()
+    assert doc.project == before
+    doc.resize_photo("p002", square)  # automatic crop: stays automatic
+    assert doc.project.photos[1].crop is None
+
+
 def test_photo_styles_keep_positions_and_are_one_step() -> None:
     doc = _document(3)
     rects = [p.rect for p in doc.project.photos]

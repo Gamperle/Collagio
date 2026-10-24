@@ -13,7 +13,9 @@ from collagio.core.geometry import (
     normalise_angle,
     pan_crop,
     refit_crop,
+    resize_free,
     resize_from_corner,
+    resize_from_edge,
     rotate_by_drag,
     screen_angle,
     to_local,
@@ -182,3 +184,36 @@ def test_refit_crop_stays_inside_the_photo() -> None:
     assert edge.y >= 0.0
     with pytest.raises(ValueError, match="positive"):
         refit_crop(full, (600, 400), 0)
+
+
+@pytest.mark.parametrize("rotation", [0.0, 30.0, -100.0])
+def test_resize_from_edge_changes_one_side_only(rotation: float) -> None:
+    rect = Rect(100, 100, 200, 100)
+    corners = rotated_corners(rect, rotation)
+    right_middle = ((corners[1][0] + corners[2][0]) / 2, (corners[1][1] + corners[2][1]) / 2)
+    pushed = to_world((150.0, 0.0), centre(rect), rotation)  # 50 beyond the right edge
+    wider = resize_from_edge(rect, rotation, 1, pushed)
+    assert (wider.width, wider.height) == pytest.approx((250, 100))
+    left = rotated_corners(wider, rotation)
+    assert left[0] == pytest.approx(corners[0])  # the left edge stays
+    assert left[3] == pytest.approx(corners[3])
+    assert right_middle != pytest.approx(centre(wider))
+    taller = resize_from_edge(rect, rotation, 2, to_world((0.0, 80.0), centre(rect), rotation))
+    assert (taller.width, taller.height) == pytest.approx((200, 130))
+    assert rotated_corners(taller, rotation)[0] == pytest.approx(corners[0])
+
+
+def test_resize_from_edge_keeps_a_minimum_size() -> None:
+    rect = Rect(0, 0, 100, 50)
+    squashed = resize_from_edge(rect, 0.0, 0, (50, 500))  # top edge dragged below the bottom
+    assert squashed.height == pytest.approx(MIN_SIZE)
+    assert squashed.bottom == pytest.approx(50)
+
+
+def test_resize_free_does_not_keep_the_aspect_ratio() -> None:
+    rect = Rect(100, 100, 200, 100)
+    free = resize_free(rect, 0.0, 2, (400, 400))  # bottom-right corner
+    assert (free.x, free.y, free.width, free.height) == pytest.approx((100, 100, 300, 300))
+    rotated = resize_free(rect, 45.0, 0, to_world((-150.0, -60.0), centre(rect), 45.0))
+    assert (rotated.width, rotated.height) == pytest.approx((250, 110))
+    assert rotated_corners(rotated, 45.0)[2] == pytest.approx(rotated_corners(rect, 45.0)[2])

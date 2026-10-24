@@ -72,8 +72,9 @@ uv run collagio-gui      # optionally followed by photos, folders or a .collagio
   each "Apply" is one undo step.
 - **Click** selects a photo (**Ctrl+click** adds to the selection), **drag** moves it. In grid
   mode, dropping a photo onto another one **swaps** them.
-- **Corner handles** resize (aspect ratio kept), the **round handle** rotates (**Shift** snaps to
-  15°).
+- **Corner handles** resize (aspect ratio kept; with **Shift** width and height change
+  freely), the **edge handles** change only the width or the height. A frame of a new shape
+  crops the photo, it never stretches it. The **round handle** rotates (**Shift** snaps to 15°).
 - **Alt+drag** moves the photo inside its frame, **Ctrl+wheel** zooms it; *Edit > Reset crop*
   goes back to the automatic crop. The **mouse wheel** zooms the view, the **middle button** pans.
 - Right-click a photo for stacking order, crop reset and removal. Undo/redo covers every edit.

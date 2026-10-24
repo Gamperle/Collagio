@@ -58,6 +58,42 @@ def resize_from_corner(rect: Rect, rotation: float, corner: int, pointer: Point)
     return Rect(cx - width / 2, cy - height / 2, width, height)
 
 
+def resize_free(rect: Rect, rotation: float, corner: int, pointer: Point) -> Rect:
+    """Resize by dragging `corner` (numbered as in `resize_from_corner`) to `pointer`
+    without keeping the aspect ratio; the opposite corner stays in place."""
+    signs = ((-1, -1), (1, -1), (1, 1), (-1, 1))[corner]
+    return _resize_sides(rect, rotation, pointer, signs)
+
+
+EDGE_SIGNS = ((0, -1), (1, 0), (0, 1), (-1, 0))  # top, right, bottom, left
+
+
+def resize_from_edge(rect: Rect, rotation: float, edge: int, pointer: Point) -> Rect:
+    """Move one edge (0 top, 1 right, 2 bottom, 3 left in the photo's own frame) to
+    `pointer`: only the width or the height changes, the opposite edge stays in place."""
+    return _resize_sides(rect, rotation, pointer, EDGE_SIGNS[edge])
+
+
+def _resize_sides(rect: Rect, rotation: float, pointer: Point, signs: tuple[int, int]) -> Rect:
+    """Move the sides picked by `signs` (-1 left/top, 1 right/bottom, 0 unchanged) to
+    `pointer`, in the photo's own frame; the opposite sides stay where they are."""
+    old_centre = centre(rect)
+    local = to_local(pointer, old_centre, rotation)
+    left, top = -rect.width / 2, -rect.height / 2
+    right, bottom = -left, -top
+    if signs[0] < 0:
+        left = min(local[0], right - MIN_SIZE)
+    elif signs[0] > 0:
+        right = max(local[0], left + MIN_SIZE)
+    if signs[1] < 0:
+        top = min(local[1], bottom - MIN_SIZE)
+    elif signs[1] > 0:
+        bottom = max(local[1], top + MIN_SIZE)
+    width, height = right - left, bottom - top
+    cx, cy = to_world(((left + right) / 2, (top + bottom) / 2), old_centre, rotation)
+    return Rect(cx - width / 2, cy - height / 2, width, height)
+
+
 def screen_angle(origin: Point, point: Point) -> float:
     """Direction from `origin` to `point` in degrees, counter-clockwise on screen."""
     return math.degrees(math.atan2(-(point[1] - origin[1]), point[0] - origin[0]))
