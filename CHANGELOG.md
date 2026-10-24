@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- New: edge handles and Shift+corner resize a photo to another shape; the photo is cropped to the new frame, not stretched
+
 ## 0.1.2 – 2026-10-23
 
 **Fixed**

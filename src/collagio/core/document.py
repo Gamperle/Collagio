@@ -20,6 +20,7 @@ from collagio.core.commands import (
     SetPhotoStyle,
     SetPlacement,
     SwapPhotos,
+    find_photo,
 )
 from collagio.core.geometry import centre, refit_crop
 from collagio.core.model import (
@@ -233,9 +234,19 @@ class Document:
                 new_h = area / new_w
                 cx, cy = centre(rect)
                 item.rect = Rect(cx - new_w / 2, cy - new_h / 2, new_w, new_h)
-            if item.crop is not None:
-                frame = content_aspect(project, item, width / height)
-                item.crop = refit_crop(item.crop, (width, height), frame)
+            self.fit_crop(project, item)
+
+    def fit_crop(self, project: Project, item: PhotoItem) -> None:
+        """Give a chosen crop the shape of the photo's current frame.
+
+        Keeps its centre and zoom, so the photo is cropped differently instead of
+        being stretched. An automatic crop (None) fits any frame by itself.
+        """
+        if item.crop is None or item.rect is None:
+            return
+        width, height = self.size_of(item.path)
+        frame = content_aspect(project, item, width / height)
+        item.crop = refit_crop(item.crop, (width, height), frame)
 
     def set_photo_styles(self, photo_ids: Iterable[str], style: StyleRef | None) -> None:
         """Own style for some photos (None: back to the default), positions unchanged."""
@@ -295,6 +306,17 @@ class Document:
 
     def move_photo(self, photo_id: str, rect: Rect, rotation: float, label: str) -> None:
         self.execute(SetPlacement(photo_id, rect, rotation, label))
+
+    def resize_photo(self, photo_id: str, rect: Rect) -> None:
+        """New frame for a photo, also of another shape: the photo is cropped to fit it,
+        never stretched (see `fit_crop`). One undo step."""
+
+        def change(project: Project) -> None:
+            item = find_photo(project, photo_id)
+            SetPlacement(photo_id, rect, item.rotation).apply(project)
+            self.fit_crop(project, item)
+
+        self._edit("Resize photo", change, relayout=False)
 
     def move_photos(self, placements: dict[str, tuple[Rect, float]], label: str) -> None:
         """Move several photos as one undo step."""

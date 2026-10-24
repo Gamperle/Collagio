@@ -9,8 +9,9 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from pypdf import PdfReader
-from PySide6.QtCore import QMimeData, QPoint, QPointF, QSettings, Qt, QTimer, QUrl
-from PySide6.QtGui import QColor, QDropEvent, QWheelEvent
+from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, QSettings, Qt, QTimer, QUrl
+from PySide6.QtGui import QColor, QDropEvent, QMouseEvent, QWheelEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 from pytestqt.qtbot import QtBot
 
@@ -334,6 +335,54 @@ def test_tile_stays_on_its_photo_after_resize(loaded: MainWindow, qtbot: QtBot) 
     assert _drawn_rect(loaded, "p002") == pytest.approx(
         (rect.x, rect.y, rect.width, rect.height), abs=2
     )
+
+
+def test_edge_handle_changes_the_frame_shape_and_crops(loaded: MainWindow, qtbot: QtBot) -> None:
+    loaded.canvas.select(["p001"])
+    original = _rect(loaded, "p001")
+    right_middle = (original.right, original.y + original.height / 2)
+    start = QPointF(view_point(loaded, *right_middle))
+    end = QPointF(view_point(loaded, right_middle[0] - original.width / 3, right_middle[1]))
+    viewport = loaded.canvas.viewport()
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=start.toPoint())
+    for step in range(1, 6):
+        QTest.mouseMove(viewport, (start + (end - start) * step / 5).toPoint())
+    loaded.renderer.wait()
+    qtbot.wait(20)  # the live preview of the new crop arrives
+    live = loaded.canvas.photo_items["p001"].sceneBoundingRect()
+    assert live.width() == pytest.approx(original.width * 2 / 3, rel=0.05)
+    QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=end.toPoint())
+    settle(loaded, qtbot)
+    resized = _rect(loaded, "p001")
+    assert resized.width == pytest.approx(original.width * 2 / 3, rel=0.05)
+    assert resized.height == pytest.approx(original.height)
+    assert (resized.x, resized.y) == pytest.approx((original.x, original.y))
+    assert _drawn_rect(loaded, "p001") == pytest.approx(
+        (resized.x, resized.y, resized.width, resized.height), abs=2
+    )  # cropped to the new frame, not stretched
+    assert loaded.undo_action.text() == "&Undo Resize photo"
+
+
+def test_shift_corner_resizes_freely(loaded: MainWindow, qtbot: QtBot) -> None:
+    loaded.canvas.select(["p002"])
+    original = _rect(loaded, "p002")
+    shift = Qt.KeyboardModifier.ShiftModifier
+    viewport = loaded.canvas.viewport()
+    start = view_point(loaded, original.right, original.bottom)
+    end = view_point(loaded, original.right - 40, original.bottom - original.height / 2)
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, shift, start)
+    for step in range(1, 6):  # QTest.mouseMove cannot hold Shift
+        position = QPointF(start + (end - start) * (step / 5))
+        move = QMouseEvent(
+            QEvent.Type.MouseMove, position, viewport.mapToGlobal(position),
+            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton, shift,
+        )  # fmt: skip
+        QApplication.sendEvent(viewport, move)
+    QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, shift, end)
+    resized = _rect(loaded, "p002")
+    assert resized.width == pytest.approx(original.width - 40, abs=3)
+    assert resized.height == pytest.approx(original.height / 2, abs=3)
+    assert resized.aspect != pytest.approx(original.aspect, rel=0.05)
 
 
 def test_rotate_with_handle(loaded: MainWindow, qtbot: QtBot) -> None:

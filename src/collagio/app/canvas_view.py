@@ -7,13 +7,16 @@ per gesture when the mouse is released:
 
 - click: select (Ctrl: add/remove); drag: move. In grid mode dropping a photo
   onto another one swaps them; anywhere else it snaps back.
-- corner handles: resize (aspect ratio kept); round handle: rotate (Shift: 15°).
+- corner handles: resize (aspect ratio kept; Shift: free); edge handles: change only the
+  width or height. The photo is cropped to a new frame shape, never stretched.
+- round handle: rotate (Shift: 15°).
 - Alt+drag: pan the photo inside its frame; Ctrl+wheel: zoom the crop.
 - wheel: zoom the view; middle button drag: pan the view.
 """
 
 from __future__ import annotations
 
+import copy
 import math
 import time
 from dataclasses import dataclass, field
@@ -58,7 +61,9 @@ from collagio.core.geometry import (
     contains,
     pan_crop,
     photo_at,
+    resize_free,
     resize_from_corner,
+    resize_from_edge,
     rotate_by_drag,
     to_local,
     to_world,
@@ -76,6 +81,8 @@ TEXT_Z = 100_000  # texts are drawn above all photos
 HANDLE_PX = 10  # handle size on screen
 ROTATE_HANDLE_PX = 28  # distance of the rotation handle above the top edge, on screen
 DRAG_THRESHOLD_PX = 4
+ROTATE_HANDLE = 4  # index of the rotation handle; 0-3 are the corners
+FIRST_EDGE_HANDLE = 5  # 5-8: middles of the top, right, bottom and left edges
 ZOOM_STEP = 1.15
 CROP_ZOOM_STEP = 1.1
 MAX_LISTED_ERRORS = 5  # in the message about photos that cannot be shown
@@ -104,7 +111,7 @@ class _Drag:
     start: Point = (0.0, 0.0)  # scene position where the button went down
     start_view: QPoint = field(default_factory=QPoint)
     photo_id: str | None = None
-    corner: int = 0
+    corner: int = 0  # handle index: corners 0-3, rotation 4, edges 5-8
     live: dict[str, tuple[Rect, float]] = field(default_factory=dict)  # preview of the result
     swap_target: str | None = None
     live_offset: tuple[float, float] | None = None  # text drag: offset so far
@@ -191,6 +198,8 @@ class CanvasView(QGraphicsView):
         self._new_tile_errors: list[str] = []  # reported once the pending tiles are in
         self._drag = _Drag()
         self._last_crop_zoom: tuple[str, float] | None = None  # photo id, time
+        self._reshape_request: tuple[int, Rect] | None = None  # live render of a new shape
+        self._reshape_next: tuple[str, Rect] | None = None  # waits for that render
 
         renderer.tile_ready.connect(self._on_tile)
         renderer.background_ready.connect(self._on_background)
@@ -290,6 +299,9 @@ class CanvasView(QGraphicsView):
     def _on_tile(self, result: TileResult) -> None:
         if self._tile_requests.get(result.photo_id) != result.request:
             return  # stale
+        if self._reshape_request is not None and result.request == self._reshape_request[0]:
+            self._on_reshape_tile(result, self._reshape_request[1])
+            return
         self._pending_tiles.discard(result.photo_id)
         item = self.photo_items.get(result.photo_id)
         photo = self._photo(result.photo_id)
@@ -408,12 +420,19 @@ class CanvasView(QGraphicsView):
     # --- hit testing -----------------------------------------------------------------------------
 
     def _handle_positions(self, photo: PhotoItem) -> list[Point]:
-        """Four corners and the rotation handle, in scene coordinates."""
+        """Four corners, the rotation handle and the middles of the top, right, bottom
+        and left edges, in scene coordinates."""
         assert photo.rect is not None
-        corners = rotated_corners(photo.rect, photo.rotation)
-        distance = photo.rect.height / 2 + ROTATE_HANDLE_PX / self._view_scale()
-        rotate = to_world((0.0, -distance), centre(photo.rect), photo.rotation)
-        return [*corners, rotate]
+        rect, rotation = photo.rect, photo.rotation
+        corners = rotated_corners(rect, rotation)
+        distance = rect.height / 2 + ROTATE_HANDLE_PX / self._view_scale()
+        rotate = to_world((0.0, -distance), centre(rect), rotation)
+        half_w, half_h = rect.width / 2, rect.height / 2
+        edges = [
+            to_world(local, centre(rect), rotation)
+            for local in ((0.0, -half_h), (half_w, 0.0), (0.0, half_h), (-half_w, 0.0))
+        ]
+        return [*corners, rotate, *edges]
 
     def _handle_at(self, point: Point) -> tuple[str, int] | None:
         if len(self.selected) != 1:
@@ -454,7 +473,7 @@ class CanvasView(QGraphicsView):
         handle = self._handle_at(point)
         if handle is not None:
             self._drag.photo_id, index = handle
-            self._drag.gesture = Gesture.ROTATE if index == 4 else Gesture.RESIZE
+            self._drag.gesture = Gesture.ROTATE if index == ROTATE_HANDLE else Gesture.RESIZE
             self._drag.corner = index
             return
 
@@ -537,16 +556,59 @@ class CanvasView(QGraphicsView):
         if photo is None or photo.rect is None:
             return
         if drag.gesture is Gesture.RESIZE:
-            rect = resize_from_corner(photo.rect, photo.rotation, drag.corner, point)
             rotation = photo.rotation
+            if drag.corner >= FIRST_EDGE_HANDLE:
+                rect = resize_from_edge(
+                    photo.rect, rotation, drag.corner - FIRST_EDGE_HANDLE, point
+                )
+            elif snap:  # Shift: the frame may change its shape
+                rect = resize_free(photo.rect, rotation, drag.corner, point)
+            else:
+                rect = resize_from_corner(photo.rect, rotation, drag.corner, point)
         else:
             rect = photo.rect
             rotation = rotate_by_drag(centre(photo.rect), drag.start, point, photo.rotation, snap)
         drag.live = {photo.id: (rect, rotation)}
-        self.photo_items[photo.id].show_live(photo.rect, rotation - photo.rotation, rect)
+        if abs(rect.aspect - photo.rect.aspect) > 1e-9:
+            self._preview_reshape(photo.id, rect)  # a new crop: render it
+        else:
+            self.photo_items[photo.id].show_live(photo.rect, rotation - photo.rotation, rect)
+
+    def _preview_reshape(self, photo_id: str, rect: Rect) -> None:
+        """Render the photo in a frame of another shape while it is dragged.
+
+        At most one such render is in flight; the latest frame waits for it.
+        """
+        if self._reshape_request is not None:
+            self._reshape_next = (photo_id, rect)
+            return
+        project = copy.deepcopy(self.document.project)
+        item = next(p for p in project.photos if p.id == photo_id)
+        item.rect = rect
+        try:
+            self.document.fit_crop(project, item)
+        except CollagioError:
+            return  # the photo cannot be read: keep the current tile
+        request = self.renderer.next_request()
+        self._reshape_request = (request, rect)
+        self._tile_requests[photo_id] = request
+        self.photo_items[photo_id].key = None  # shows a preview: render again afterwards
+        self.renderer.render_tile(project, photo_id, request)
+
+    def _on_reshape_tile(self, result: TileResult, rect: Rect) -> None:
+        self._reshape_request = None
+        item = self.photo_items.get(result.photo_id)
+        if item is not None and result.error is None:
+            item.set_tile(result.image, result.offset, preview_scale(self.document.project))
+            item.place(rect)
+        if self._reshape_next is not None:
+            photo_id, rect = self._reshape_next
+            self._reshape_next = None
+            self._preview_reshape(photo_id, rect)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         drag, self._drag = self._drag, _Drag()
+        self._reshape_request = self._reshape_next = None  # later live renders are stale
         point = self._point(self.mapToScene(event.position().toPoint()))
         try:
             if drag.gesture is Gesture.MOVE and drag.live:
@@ -555,9 +617,11 @@ class CanvasView(QGraphicsView):
                 if drag.swap_target is not None and drag.photo_id is not None:
                     self.document.swap_photos(drag.photo_id, drag.swap_target)
                     self.select([drag.photo_id])
-            elif drag.gesture in (Gesture.RESIZE, Gesture.ROTATE) and drag.live:
-                label = "Resize photo" if drag.gesture is Gesture.RESIZE else "Rotate photo"
-                self.document.move_photos(drag.live, label)
+            elif drag.gesture is Gesture.RESIZE and drag.live:
+                ((photo_id, (rect, _)),) = drag.live.items()
+                self.document.resize_photo(photo_id, rect)
+            elif drag.gesture is Gesture.ROTATE and drag.live:
+                self.document.move_photos(drag.live, "Rotate photo")
             elif drag.gesture is Gesture.PAN_CROP and drag.photo_id is not None:
                 self._pan_crop(drag.photo_id, drag.start, point)
             elif drag.gesture is Gesture.MOVE_TEXT and drag.live_offset is not None:
@@ -717,6 +781,6 @@ class CanvasView(QGraphicsView):
             painter.setBrush(QBrush(QColor("white")))
             top_mid = to_world((0.0, -frame.height / 2), centre(frame), rotation)
             painter.drawLine(QPointF(*top_mid), QPointF(*handles[4]))
-            for hx, hy in handles[:4]:
+            for hx, hy in [*handles[:4], *handles[FIRST_EDGE_HANDLE:]]:
                 painter.drawRect(QRectF(hx - size / 2, hy - size / 2, size, size))
             painter.drawEllipse(QPointF(*handles[4]), size * 0.6, size * 0.6)
