@@ -3,6 +3,7 @@
 ## Unreleased
 
 - New: edge handles and Shift+corner resize a photo to another shape; the photo is cropped to the new frame, not stretched
+- Fixed: exporting to a name without a file ending failed; the ending of the type chosen in the dialog is now added
 
 ## 0.1.2 – 2026-10-23
 
