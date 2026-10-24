@@ -12,7 +12,7 @@ from pypdf import PdfReader
 from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, QSettings, Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDropEvent, QMouseEvent, QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 from pytestqt.qtbot import QtBot
 
 from collagio import __version__
@@ -24,6 +24,7 @@ from collagio.app.main_window import (
     MainWindow,
     expand_paths,
 )
+from collagio.app.strings import export_filter
 from collagio.app.workers import ExportJob
 from collagio.core.document import Document, autosave_name
 from collagio.core.geometry import centre, photo_at
@@ -761,6 +762,49 @@ def test_export_failure_is_reported(loaded: MainWindow, qtbot: QtBot, tmp_path: 
     with qtbot.waitSignal(job.signals.failed, timeout=20_000) as failed:
         pass
     assert "cannot write" in failed.args[0]
+
+
+@pytest.mark.parametrize(
+    ("typed", "chosen", "expected"),
+    [
+        ("collage", 1, "collage.jpg"),  # no ending: the chosen type's
+        ("collage", 2, "collage.pdf"),
+        ("trip.v2", 0, "trip.v2.png"),  # not an image ending
+        ("photo.JPEG", 2, "photo.JPEG"),  # a known ending is kept
+    ],
+)
+def test_export_dialog_adds_the_chosen_ending(
+    loaded: MainWindow,
+    qtbot: QtBot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    typed: str,
+    chosen: int,
+    expected: str,
+) -> None:
+    filters = export_filter().split(";;")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(tmp_path / typed), filters[chosen]),
+    )
+    asked: list[Path] = []
+
+    def ask(path: Path) -> ExportOptions:
+        asked.append(path)
+        return ExportOptions()
+
+    loaded.ask_export_options = ask  # type: ignore[method-assign]
+    jobs: list[ExportJob] = []
+    real_export = loaded.export
+    loaded.export = lambda path, options=None: jobs.append(real_export(path, options))  # type: ignore[method-assign,func-returns-value]
+    loaded.export_action.trigger()
+    assert asked == [tmp_path / expected]
+    (job,) = jobs
+    assert job is not None
+    with qtbot.waitSignal(job.signals.finished, timeout=20_000):
+        pass
+    assert (tmp_path / expected).exists()
 
 
 def test_export_without_photos(window: MainWindow, tmp_path: Path) -> None:

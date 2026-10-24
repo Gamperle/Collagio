@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -64,6 +65,19 @@ from collagio.imaging.loader import find_images, is_supported
 
 MAX_RECENT = 8
 AUTOSAVE_INTERVAL_MS = 120_000
+
+
+EXPORT_SUFFIXES = (".png", ".jpg", ".jpeg", ".pdf")
+
+
+def with_export_suffix(path: Path, chosen_filter: str) -> Path:
+    """`path` with the ending of the file type chosen in the dialog, unless it already
+    has an image ending (file dialogs do not add it everywhere)."""
+    if path.suffix.lower() in EXPORT_SUFFIXES:
+        return path
+    match = re.search(r"\*(\.[A-Za-z0-9]+)", chosen_filter)
+    suffix = match.group(1) if match else ".png"
+    return path.with_name(path.name + suffix)
 
 
 @dataclass
@@ -612,17 +626,21 @@ class MainWindow(QMainWindow):
         start = (
             self.document.path.with_suffix("").with_suffix(".jpg") if self.document.path else None
         )
-        path, _ = QFileDialog.getSaveFileName(
+        filters = export_filter()
+        jpeg = filters.split(";;")[1]  # the start name ends in .jpg
+        path, chosen = QFileDialog.getSaveFileName(
             self,
             self.tr("Export image"),
             str(start) if start else self._last_folder(),
-            export_filter(),
+            filters,
+            jpeg,
         )
         if not path:
             return
-        options = self.ask_export_options(Path(path))
+        target = with_export_suffix(Path(path), chosen)
+        options = self.ask_export_options(target)
         if options is not None:
-            self.export(Path(path), options)
+            self.export(target, options)
 
     def ask_export_options(self, path: Path) -> ExportOptions | None:
         dialog = ExportOptionsDialog(path, self.export_options, self)
