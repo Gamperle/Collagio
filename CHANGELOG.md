@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+**Fixed**
+
+- *Open recent* hides projects whose files are missing and offers *Clear list* to reset the history (#30).
+
 ## 0.1.3 – 2026-10-24
 
 **New**
