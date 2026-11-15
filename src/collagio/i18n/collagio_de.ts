@@ -732,6 +732,10 @@
         <translation>Fotos hinzufügen</translation>
     </message>
     <message>
+        <source>Clear list</source>
+        <translation>Liste leeren</translation>
+    </message>
+    <message>
         <source>Recover unsaved work</source>
         <translation>Ungespeicherte Arbeit wiederherstellen</translation>
     </message>

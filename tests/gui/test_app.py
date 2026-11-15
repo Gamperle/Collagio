@@ -633,6 +633,35 @@ def test_save_open_and_recent(
     assert not other.document.modified
 
 
+def test_open_recent_hides_files_removed_since_the_last_save(
+    window: MainWindow, tmp_path: Path
+) -> None:
+    current = tmp_path / "current.collagio"
+    removed = tmp_path / "removed.collagio"
+    assert window._save_to(current)
+    assert window._save_to(removed)
+    removed.unlink()
+
+    window.recent_menu.aboutToShow.emit()
+
+    entries = [action.text() for action in window.recent_menu.actions() if not action.isSeparator()]
+    assert entries == ["current.collagio", "Clear list"]
+
+
+def test_clear_recent_list_removes_saved_history(
+    make_window: Callable[[], MainWindow], window: MainWindow, tmp_path: Path
+) -> None:
+    target = tmp_path / "trip.collagio"
+    assert window._save_to(target)
+
+    window.recent_menu.actions()[-1].trigger()
+
+    assert window.recent_files() == []
+    assert not window.recent_menu.isEnabled()
+    assert make_window().recent_files() == []
+    assert target.is_file()
+
+
 def test_save_uses_existing_path(loaded: MainWindow, tmp_path: Path) -> None:
     loaded._save_to(tmp_path / "a.collagio")
     loaded.document.relayout(seed=77)

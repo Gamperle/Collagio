@@ -12,6 +12,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     QDateTime,
+    QFileInfo,
     QLocale,
     QLockFile,
     QSettings,
@@ -263,6 +264,7 @@ class MainWindow(QMainWindow):
         for action in (self.new_action, self.open_action):
             file_menu.addAction(action)
         self.recent_menu = file_menu.addMenu(self.tr("Open &recent"))
+        self.recent_menu.aboutToShow.connect(self._rebuild_recent_menu)
         file_menu.addSeparator()
         for action in (self.save_action, self.save_as_action):
             file_menu.addAction(action)
@@ -532,13 +534,23 @@ class MainWindow(QMainWindow):
         self.settings.setValue("last_folder", str(path.parent))
         self._rebuild_recent_menu()
 
+    def _clear_recent_files(self) -> None:
+        self.settings.remove("recent_files")
+        self._rebuild_recent_menu()
+
     def _rebuild_recent_menu(self) -> None:
         self.recent_menu.clear()
         recent = self.recent_files()
         for entry in recent:
+            if not QFileInfo(entry).isFile():
+                continue
             action = self.recent_menu.addAction(Path(entry).name)
             action.setToolTip(entry)
             action.triggered.connect(lambda _=False, p=entry: self.open_file(Path(p)))
+        if self.recent_menu.actions():
+            self.recent_menu.addSeparator()
+        if recent:
+            self.recent_menu.addAction(self.tr("Clear list"), self._clear_recent_files)
         self.recent_menu.setEnabled(bool(recent))
 
     # --- autosave --------------------------------------------------------------------------------
